@@ -3,6 +3,7 @@ package com.sazdan.kubejsic2classic.event;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import com.sazdan.kubejsic2classic.recipe.CraftingWrapper;
 import com.sazdan.kubejsic2classic.recipe.MachineRecipeWrapper;
 import com.sazdan.kubejsic2classic.recipe.Machines;
 import com.sazdan.kubejsic2classic.recipe.special.CannerWrapper;
@@ -52,6 +53,9 @@ public class IC2RecipesEventJS extends EventJS {
     public final RefiningWrapper refining = new RefiningWrapper();
     public final RareEarthWrapper rareEarth = new RareEarthWrapper();
     public final PotionBrewWrapper potionBrewing = new PotionBrewWrapper();
+
+    // Count-aware workbench crafts + cooking/stonecutter/smithing (RecipeRegistry.CRAFTING).
+    public final CraftingWrapper crafting = new CraftingWrapper();
 
     private MachineRecipeWrapper reg(String name) {
         MachineRecipeWrapper wrapper = new MachineRecipeWrapper(name);

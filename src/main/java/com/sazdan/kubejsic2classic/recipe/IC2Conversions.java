@@ -24,6 +24,8 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.level.ItemLike;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -68,6 +70,44 @@ public final class IC2Conversions {
         // ItemStack, Item, ItemLike, ingredient-json etc. -> resolve to a stack (count kept).
         ItemStack stack = ItemStackJS.of(o);
         return stackToInput(stack);
+    }
+
+    /**
+     * Convert a JS value into a form IC2's {@code AdvRecipeRegistry.createFrom} accepts for
+     * <em>cooking / stonecutter / smithing</em> inputs: an {@link ItemStack}, {@link ItemLike},
+     * item {@link TagKey} or vanilla {@link Ingredient}. These recipes round-trip through the
+     * vanilla {@link net.minecraft.world.item.crafting.RecipeManager} as a standard
+     * {@code Ingredient}, so an IC2 {@link IInput} (count-aware) is <em>not</em> valid here — its
+     * JSON can't be read back by the vanilla-style serializers. Count is irrelevant for these
+     * single-ingredient recipe types anyway.
+     */
+    public static Object toVanillaInput(Object o) {
+        if (o == null) {
+            throw new IllegalArgumentException("IC2 recipe input cannot be null");
+        }
+        if (o instanceof Ingredient || o instanceof ItemStack || o instanceof TagKey || o instanceof ItemLike) {
+            return o;
+        }
+        if (o instanceof IInput input) {
+            List<ItemStack> comps = input.getComponents();
+            if (!comps.isEmpty()) {
+                return comps.get(0);
+            }
+            throw new IllegalArgumentException("IC2 recipe input resolved to nothing: " + o);
+        }
+        if (o instanceof CharSequence cs) {
+            String s = cs.toString().trim();
+            Matcher m = COUNT_PREFIX.matcher(s);
+            if (m.matches()) {
+                s = m.group(2).trim();
+            }
+            if (s.startsWith("#")) {
+                ResourceLocation id = parseId(s.substring(1));
+                return TagKey.create(Registry.ITEM_REGISTRY, id);
+            }
+            return ItemStackJS.of(s);
+        }
+        return ItemStackJS.of(o);
     }
 
     /** Convert a whole argument list into an {@link IInput} array. */

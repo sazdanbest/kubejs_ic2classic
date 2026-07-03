@@ -63,5 +63,27 @@ IC2Events.recipes(event => {
     // IC2 potion brewing: ingredient -> effect.
     event.potionBrewing.addBrew('minecraft:golden_carrot', 'minecraft:night_vision')
 
-    console.info('[IC2 example] queued IC2 machine + special + fluid recipes (applied after IC2 loads)')
+    // --- Count-aware workbench crafts (Phase 5) ---
+    // These go through IC2's IInput, so counts in a slot are HONEST: unlike native
+    // event.shaped, `Item.of(id, 4)` really demands 4 items in that slot.
+
+    // Shaped: each 'P' slot honestly needs 4 Mixed Metal Ingots -> a row of Refined Iron.
+    event.crafting.shaped('ic2:ingot_refined_iron', ['PPP'], {
+        P: Item.of('ic2:ingot_advanced_alloy', 4),
+    })
+
+    // Shapeless: 2 diamonds from a diamond block (inputs as an array or as varargs).
+    event.crafting.shapeless(Item.of('minecraft:diamond', 2), ['minecraft:diamond_block'])
+
+    // Cooking: default furnace, or name blast_furnace / smoker / campfire; optional xp, time.
+    event.crafting.smelting('ic2:ingot_refined_iron', 'minecraft:iron_ingot', 'blast_furnace')
+
+    // Stonecutter and smithing (vanilla-style inputs; count is irrelevant for these).
+    event.crafting.stonecutter('minecraft:stone_bricks', 'minecraft:stone')
+    event.crafting.smithing('minecraft:netherite_hoe', 'minecraft:diamond_hoe', 'minecraft:netherite_ingot')
+
+    // Removal by id (also: removeSmelting/removeStonecutter/removeSmithing).
+    //   event.crafting.remove('ic2:im_machine')
+
+    console.info('[IC2 example] queued IC2 machine + special + fluid + crafting recipes (applied after IC2 loads)')
 })

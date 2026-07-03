@@ -81,10 +81,14 @@ public final class IC2RecipeApplier {
         registerBoth(RecipeRegistry.POTION_BREWING, seen,
                 list -> apply("potionBrewing", list, ev -> ev.potionBrewing));
 
+        // Count-aware workbench crafts — single (non-sided) registry, fires listeners on reload().
+        registerListenerDedup(RecipeRegistry.CRAFTING, seen,
+                list -> apply("crafting", list, ev -> ev.crafting));
+
         // Refining has an API interface but no RecipeRegistry field — reach it via IC2 internals.
         registerRefining(seen);
 
-        KubeJSIC2Classic.LOGGER.info("[{}] registered IC2 reload listeners ({} machines + 8 special + refining)",
+        KubeJSIC2Classic.LOGGER.info("[{}] registered IC2 reload listeners ({} machines + 8 special + crafting + refining)",
                 KubeJSIC2Classic.MOD_ID, Machines.ALL.size());
     }
 

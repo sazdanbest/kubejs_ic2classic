@@ -16,7 +16,7 @@
 
 ## Текущий статус (обновлено 2026-07-03)
 
-**Готово: Фаза 0 (тулчейн) + Фаза 1 (скелет). Проект собирается и компилируется.**
+**Готово: Фазы 0–5. Проект собирается, компилируется и проверен в рантайме (машинные рецепты + счётные крафты верстака). Дальше — Фаза 6 (JEI).**
 
 Сделано в этой сессии:
 - Поставлен **JDK 17** (Temurin, winget). Gradle обязан идти на 17 (см. ниже).
@@ -44,9 +44,11 @@
 
 **Фаза 4 (машинные рецепты) — ✅ ПОЛНОСТЬЮ СДЕЛАНА И ПРОВЕРЕНА В РАНТАЙМЕ (2026-07-03).** `IC2Events.recipes(event => …)` покрывает ВСЕ рецептурные реестры IC2 (10 машин + electrolyzer/scrapbox/fusion/uuMatter/canner/fluidFuels/rareEarth/potionBrewing + refining), плюс фундамент под флюиды. Ключевой механизм — **deferred-apply**: эвент записывает операции, применяются они из IC2 `registerListener` *после* датапак-загрузки IC2 (иначе KubeJS `onServerReload` идёт раньше и всё затирается). Рантайм: `registered IC2 reload listeners (10 machines + 8 special + refining)` + 19× `applied`, `/reload` без дублей. Детали и файлы — в разделе «Фаза 4» ниже.
 
+**Фаза 5 (счётные крафты верстака) — ✅ СДЕЛАНА И ПРОВЕРЕНА В РАНТАЙМЕ (2026-07-03).** Добавлен `event.crafting` (внутри `IC2Events.recipes`, НЕ отдельный глобал — reload-safe через тот же deferred-apply): `shaped/shapeless` (count честно сохраняется через IC2 `IInput`), `smelting/stonecutter/smithing` (+ removes). Backend — `RecipeRegistry.CRAFTING` (`IAdvancedCraftingManager`, единичный). Рантайм: `crafting: applied +5/-0`, без parse-ошибок ванильного RecipeManager. Ключевой баг (IInput ok для shaped/shapeless, но cooking/single/smithing требуют ванильную форму `ItemStack/Tag/Ingredient`) найден и закрыт `IC2Conversions.toVanillaInput`. Детали — в разделе «Фаза 5».
+
 Что дальше (не сделано):
 - IDEA: импорт как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`, плагин *Minecraft Development*.
-- **Фаза 4 — ✅ ПОЛНОСТЬЮ ЗАКРЫТА** (все рецептурные реестры IC2: машины + electrolyzer/scrapbox/fusion/uuMatter/canner/fluidFuels/rareEarth/potionBrewing + refining + флюиды). Следующий содержательный шаг — **Фаза 5** (счётные крафты верстака через `IAdvancedCraftingManager`).
+- **Фазы 4 и 5 — ✅ ЗАКРЫТЫ.** Следующий содержательный шаг — **Фаза 6** (JEI, Вариант А: своя `IRecipeCategory` для IC2-крафтов из `getComponents()` + count-aware `IRecipeTransferHandler` для `CraftingMenu`).
 
 **Как собрать/запустить из консоли:**
 ```bash
@@ -182,9 +184,18 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 
 **Файлы Фазы 4:** `recipe/IC2Conversions.java` (JS→IInput/генераторы/RL/числа/auto-id), `recipe/RecordingWrapper.java` (общая база: запись `Consumer<X>` + счётчики + applyTo), `recipe/MachineRecipeWrapper.java` (машины, auto-id), `recipe/Machines.java` (реестр name→SidedObject, 10 машин), `recipe/IC2RecipeApplier.java` (collect + обобщённый `registerBoth` листенер на 10+5), `recipe/special/{Electrolyzer,Scrapbox,Fusion,UuMatter,Canner,FluidFuels,Refining,RareEarth,PotionBrew}Wrapper.java` (Refining с fluent-`Builder`), `event/IC2Events.java` (EventGroup), `event/IC2RecipesEventJS.java` (аксессоры). Пример: `examples/server_scripts/ic2_recipes_example.js`. **⚠️ IC2RecipeApplier импортирует `ic2.core.IC2`/`ic2.core...GlobalRecipes` (internal) ради refining — единственная зависимость от не-API IC2, обёрнута в try/catch.**
 
-### Фаза 5 — Счётные крафты верстака
-- [ ] Обёртка `IC2Crafting` над `IAdvancedCraftingManager`: `shaped/shapeless/remove` + smelting/stonecutter/smithing/repair, с сохранением count из `Item.of(id, N)`.
-- [ ] Acceptance: крафт с `Item.of('...',4)` реально требует 4 в слоте в верстаке.
+### Фаза 5 — Счётные крафты верстака — ✅ СДЕЛАНО И ПРОВЕРЕНО В РАНТАЙМЕ (2026-07-03)
+**Ключевое решение — не отдельный глобал `IC2Crafting`, а `event.crafting` внутри `IC2Events.recipes`.** Причина: та же проблема порядка, что и в Фазе 4 — глобал выполнялся бы при eval скрипта (до перестройки рецептов IC2) и копил бы stale-операции между `/reload`. `event.crafting` получает свежую обёртку каждый reload и применяется через deferred-apply → переиспользует всю инфраструктуру Фазы 4.
+- [x] Обёртка `CraftingWrapper extends RecordingWrapper<IAdvancedCraftingManager>` (`recipe/CraftingWrapper.java`). Методы: `shaped(id?, output, pattern[], keys{})`, `shapeless(id?, output, [inputs]|...inputs)`, `smelting(id?, output, input, [type...], [xp], [time])` (типы `furnace/blast_furnace/smoker/campfire`), `stonecutter(id?, output, input)`, `smithing(id?, output, base, addition)`; removes: `remove(id)`, `removeSmelting(id,...types)`, `removeStonecutter(id)`, `removeSmithing(id)`. Auto-id `kubejs_ic2classic:crafting/<kind>/<out>`, идемпотентность через remove-перед-add.
+- [x] **Механизм авторинга сверен `javap`:** `RecipeRegistry.CRAFTING` = `AdvRecipeRegistry.INSTANCE` (`IAdvancedCraftingManager extends IListenableRegistry`, единичный, НЕ sided). `addShapedRecipe(rl, ItemStack, Object...)` → `ShapedIC2Recipe.create` парсит ванильный формат `"row","row","row", 'A', input, 'B', input`; каждое значение проходит через `RecipeRegistry.INGREDIENTS.createInputFrom(Object)`, который **уже-готовый `IInput` пропускает насквозь** → count сохраняется. Значения ключей строим через `IC2Conversions.toInput`.
+- [x] **Порядок листенеров подтверждён `javap` (ключевой нюанс):** `GlobalRecipes.reloadRecipes()` вызывает `AdvRecipeRegistry.INSTANCE.reload()` в том же цикле, что и машины. `BaseRegistry.reload()` = `reloadInternals()` (очистка) → листенеры **по порядку регистрации** → `onAfterReload()` (инжект в игру). IC2 в `init()` вешает свой листенер `IC2.loadRecipes` (→ `IC2Recipes.addRecipes` — наполняет реестр ВСЕМИ дефолтными крафтами IC2) РАНЬШЕ нашего. Значит наш листенер идёт **последним** — дефолты IC2 уже на месте → и `add`, и `remove('ic2:...')` работают, инжект в игру идёт после нас в `onAfterReload`. Это идеальный порядок.
+- [x] JS-типы: pattern-массив → `ListJS.of` (Rhino `NativeArray implements List`), keys-объект → `MapJS.of` (Rhino `NativeObject implements Map`).
+- [x] **⚠️ Рантайм-баг найден и исправлен (2026-07-03): shaped/shapeless vs cooking/single/smithing используют РАЗНЫЕ пути входов.** shaped/shapeless → `ShapedIC2Recipe.create` → `createInputFrom` (принимает `IInput`, count сохраняется). А smelting/stonecutter/smithing → приватный `AdvRecipeRegistry.createFrom(Object)`, который принимает **только** `ItemStack/ItemLike/TagKey/Ingredient` (ванильные формы) и при инжекте в ванильный RecipeManager сериализуется как обычный `Ingredient`. Передача `IInput` туда → `CookingSerializer/SingleSerializer/SmithingSerializer.fromJson` кидает `"Input has to be either a [Stack/IItemProvider/ItemTag/Ingredient]"`. Фикс: новый `IC2Conversions.toVanillaInput(Object)` (ItemStack/`#tag`→TagKey/passthrough), им кормятся именно эти 3 типа. shaped/shapeless остаются на `toInput` (IInput, count важен). count для cooking/single/smithing нерелевантен (одиночный вход).
+- [x] `SmeltingType.convert(rl)` переписывает id на `namespace:path_<suffix>` (furnace/blast/…). Значит реальный id smelting-рецепта = `<наш rl>_furnace` и т.п.; `removeSmeltingRecipe(rl, types)` делает ту же конверсию → идемпотентность сохраняется.
+- [x] Acceptance (сборка): `./gradlew compileJava` + `./gradlew build` → BUILD SUCCESSFUL.
+- [x] **Acceptance (рантайм, runClient + автозагрузка мира `--quickPlaySingleplayer`): `crafting: applied +5/-0 op(s)` рядом со всеми машинами Фазы 4; после фикса — `NO_PARSE_ERRORS` (ванильный RecipeManager принимает наши cooking/single/smithing).** ⚠️ Item-id в примерах должны быть реальными (`ic2:ingot_refined_iron`, `ic2:ingot_advanced_alloy`, НЕ `ic2:refined_iron`/`ic2:advanced_alloy`) — иначе эвристика `looksLikeId` примет незарегистрированный id за явный recipe-id и распарсит вызов неверно.
+
+**Файлы Фазы 5:** `recipe/CraftingWrapper.java` (новый); правки в `event/IC2RecipesEventJS.java` (`public final CraftingWrapper crafting`) и `recipe/IC2RecipeApplier.java` (`registerListenerDedup(RecipeRegistry.CRAFTING, …)` — единичный, лог `… + crafting + refining`). Примеры — в `examples/server_scripts/ic2_recipes_example.js` (блок «Count-aware workbench crafts»).
 
 ### Фаза 6 — JEI (Вариант А)
 - [ ] Клиентский `IModPlugin`: своя `IRecipeCategory` для IC2-крафтов; слоты из `getComponents()` (с count).
@@ -254,4 +265,19 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - **refining** — обнаружено: `IRefiningRecipeList` есть в API, но **не выведен в `RecipeRegistry`** (единственный такой). Доступ — через internal `ic2.core.IC2.RECIPES` (`SidedGateway<GlobalRecipes>`) → `global.refining` (`RefiningRecipeList implements IRefiningRecipeList`). Обёрнуто в try/catch (деградация при смене IC2). Fluent-билдер (`firstFluid/secondFluid/catalyst/fluidOutput/itemOutput/build`), выход `SimpleFluidOutput`.
 - Рантайм: `registered IC2 reload listeners (10 machines + 6 special + refining)` + 17× `applied`, без ошибок. **Фаза 4 закрыта полностью.**
 
-**Следующий шаг: Фаза 5** (счётные крафты верстака через `RecipeRegistry.CRAFTING` = `IAdvancedCraftingManager`: addShaped/addShapeless с сохранением count через `IInput`).
+### 2026-07-03 (продолжение) — Фаза 5: счётные крафты верстака (проверено рантаймом)
+Итог: **`event.crafting` работает в игре.** `shaped/shapeless/smelting/stonecutter/smithing` + removes через `RecipeRegistry.CRAFTING` (`IAdvancedCraftingManager`, единичный, не sided). За сессию:
+- **Решение по API:** не отдельный глобал `IC2Crafting` (как в исходном плане), а `event.crafting` внутри `IC2Events.recipes` — та же проблема порядка reload, что в Фазе 4; глобал копил бы stale-операции между `/reload`. Переиспользована вся инфраструктура deferred-apply.
+- **Механизм сверен `javap`:** shaped-формат — ванильный `"row","row","row",'A',in,...`, значения через `RecipeRegistry.INGREDIENTS.createInputFrom` (уже-`IInput` пропускает насквозь → count цел). `GlobalRecipes.reloadRecipes()` дёргает `AdvRecipeRegistry.INSTANCE.reload()` в общем цикле; `BaseRegistry.reload()` = clear → листенеры по порядку → onAfterReload(инжект). IC2 в `init()` вешает свой листенер (`IC2.loadRecipes` → наполняет реестр дефолтными крафтами) РАНЬШЕ нашего → мы идём последними (дефолты уже на месте: add и remove работают).
+- **2 рантайм-бага найдены и закрыты через runClient + автозагрузку мира (`--quickPlaySingleplayer "New World"`):**
+  1. **IInput vs ванильный вход:** shaped/shapeless принимают `IInput` (count цел), но cooking/single/smithing идут через приватный `createFrom(Object)` → только `ItemStack/ItemLike/TagKey/Ingredient`, сериализуются в ванильный `Ingredient`. `IInput` туда → `CookingSerializer/SingleSerializer/SmithingSerializer.fromJson` кидает "Input has to be either a [Stack/IItemProvider/ItemTag/Ingredient]". Фикс: `IC2Conversions.toVanillaInput` для этих 3 типов.
+  2. **Неверные item-id в примере** (`ic2:refined_iron`/`ic2:advanced_alloy` — незарегистрированные) → эвристика `looksLikeId` принимала их за явный recipe-id и распарсивала вызов неверно. Реальные id: `ic2:ingot_refined_iron`, `ic2:ingot_advanced_alloy` (из `assets/ic2/lang/items_en_us.json`).
+- Acceptance подтверждён логами: `registered IC2 reload listeners (10 machines + 8 special + crafting + refining)`, `crafting: applied +5/-0`, без parse-ошибок ванильного RecipeManager.
+- Файлы: `recipe/CraftingWrapper.java` (новый), правки в `recipe/IC2Conversions.java` (+`toVanillaInput`), `event/IC2RecipesEventJS.java` (+`crafting`), `recipe/IC2RecipeApplier.java` (+листенер CRAFTING), `examples/server_scripts/ic2_recipes_example.js`.
+
+**Операционные памятки по dev-тесту крафтов (для новой сессии):**
+- Тест — `runClient` c `--args='--quickPlaySingleplayer "New World"'` (автозагрузка мира триггерит `onServerReload` → `crafting: applied`). Мир `New World` уже есть в `run/saves/`.
+- После теста убивать форкнутый JVM клиента (иначе лок `session.lock` мешает след. запуску): PowerShell по `CommandLine -match 'net.minecraft.client.main.Main'`.
+- Item-id в примерах — только реальные (IC2 использует префиксы `ingot_`/`plate_`/… — сверять по `assets/ic2/lang/items_en_us.json`).
+
+**Следующий шаг: Фаза 6** (JEI, Вариант А: своя `IRecipeCategory` для IC2-крафтов из `getComponents()` + count-aware `IRecipeTransferHandler` для `CraftingMenu`; образец — `ic2.jeiplugin.core.transferhandler.IndustrialWorkbenchTransferHandler`).

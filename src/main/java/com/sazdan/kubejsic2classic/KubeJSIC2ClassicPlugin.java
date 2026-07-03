@@ -1,20 +1,41 @@
 package com.sazdan.kubejsic2classic;
 
+import com.sazdan.kubejsic2classic.event.IC2Events;
+import com.sazdan.kubejsic2classic.recipe.IC2Conversions;
+import com.sazdan.kubejsic2classic.recipe.IC2RecipeApplier;
+
 import dev.latvian.mods.kubejs.KubeJSPlugin;
-import dev.latvian.mods.kubejs.script.BindingsEvent;
+import dev.latvian.mods.kubejs.script.ScriptType;
+import dev.latvian.mods.rhino.util.wrap.TypeWrappers;
+import ic2.api.recipes.ingridients.inputs.IInput;
 
 /**
  * KubeJS plugin for IC2Classic. Registered via {@code kubejs.plugins.txt}.
  *
- * <p>Phase 3 skeleton: only exposes a smoke-test global so we can confirm the plugin loads
- * ({@code console.log(IC2Recipes)} in a script). The real machine-recipe and count-craft
- * bindings land in later phases — see CLAUDE.md.
+ * <p>Phase 4: exposes the {@code IC2Events.recipes} server event for adding/removing IC2
+ * machine recipes. The event is re-posted on every server (re)load so scripts stay applied
+ * after IC2 rebuilds its recipe lists from datapacks.
  */
 public class KubeJSIC2ClassicPlugin extends KubeJSPlugin {
 
     @Override
-    public void registerBindings(BindingsEvent event) {
-        // Smoke-test binding. Replaced by the real IC2Recipes / IC2Crafting objects in Phase 4/5.
-        event.add("IC2Recipes", "kubejs_ic2classic: plugin loaded (" + event.getType() + ")");
+    public void registerEvents() {
+        // Registering the group makes KubeJS expose the global `IC2Events` binding automatically.
+        IC2Events.GROUP.register();
+    }
+
+    @Override
+    public void registerTypeWrappers(ScriptType type, TypeWrappers wrappers) {
+        // Let scripts pass strings/items where the API asks for a count-aware IC2 input.
+        // NOTE: don't register ResourceLocation here — KubeJS already provides that wrapper,
+        // and re-registering it throws and aborts mod construction.
+        wrappers.register(IInput.class, (cx, o) -> IC2Conversions.toInput(o));
+    }
+
+    @Override
+    public void onServerReload() {
+        // KubeJS fires this BEFORE IC2 rebuilds its recipe lists, so we only record the scripts'
+        // operations here; IC2RecipeApplier replays them from IC2's own reload listener afterwards.
+        IC2RecipeApplier.collect();
     }
 }

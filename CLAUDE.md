@@ -42,9 +42,11 @@
 
 ⚠️ **`runServer` (dedicated) в dev НЕ поднимается** — и IC2, и KubeJS падают на CONSTRUCT именно на серверном dist: KubeJS тянет клиентский класс `BlockColor` (RuntimeDistCleaner: "invalid dist DEDICATED_SERVER"), IC2 — NPE в `IC2Config.save` (`getCurrentServer()==null`). Это **dev-userdev-специфика**, не наш баг (в проде обе моды на серверах работают). Вывод: **в dev тестируем через `runClient`**; тест выделенного сервера (Фаза 7) — только на реальном прод-наборе jar, не через `runServer`.
 
+**Фаза 4 (машинные рецепты) — ✅ ПОЛНОСТЬЮ СДЕЛАНА И ПРОВЕРЕНА В РАНТАЙМЕ (2026-07-03).** `IC2Events.recipes(event => …)` покрывает ВСЕ рецептурные реестры IC2 (10 машин + electrolyzer/scrapbox/fusion/uuMatter/canner/fluidFuels/rareEarth/potionBrewing + refining), плюс фундамент под флюиды. Ключевой механизм — **deferred-apply**: эвент записывает операции, применяются они из IC2 `registerListener` *после* датапак-загрузки IC2 (иначе KubeJS `onServerReload` идёт раньше и всё затирается). Рантайм: `registered IC2 reload listeners (10 machines + 8 special + refining)` + 19× `applied`, `/reload` без дублей. Детали и файлы — в разделе «Фаза 4» ниже.
+
 Что дальше (не сделано):
 - IDEA: импорт как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`, плагин *Minecraft Development*.
-- **Фаза 4 (ядро машинных рецептов) — следующий содержательный шаг.**
+- **Фаза 4 — ✅ ПОЛНОСТЬЮ ЗАКРЫТА** (все рецептурные реестры IC2: машины + electrolyzer/scrapbox/fusion/uuMatter/canner/fluidFuels/rareEarth/potionBrewing + refining + флюиды). Следующий содержательный шаг — **Фаза 5** (счётные крафты верстака через `IAdvancedCraftingManager`).
 
 **Как собрать/запустить из консоли:**
 ```bash
@@ -169,12 +171,16 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - [x] `KubeJSIC2ClassicPlugin extends KubeJSPlugin` + `registerBindings(BindingsEvent)` → `IC2Recipes` (пока smoke-test строка). Сигнатуры сверены `javap`: `event.add(String,Object)`, `event.getType()`. **Сделано.**
 - [x] Acceptance (частично): `runClient` поднимается, KubeJS находит плагин (`Found plugin source kubejs_ic2classic`), CONSTRUCT без ошибок. Осталось проверить `console.log(IC2Recipes)` из скрипта в игре.
 
-### Фаза 4 — Машинные рецепты (ядро)
-- [ ] TypeWrappers: JS → `IInput` (`ItemInput`/`ItemTagInput`/`ItemStackInput`/`FluidInput`) с учётом count; JS → `IRecipeOutput` (`SimpleRecipeOutput`/`ChanceRecipeOutput`/`RangeRecipeOutput`, XP, NBT).
-- [ ] `EventGroup "IC2Events"` + `event.<machine>.add/remove` для всех `RecipeRegistry.*` списков.
-- [ ] Спец-обёртки: electrolyzer, fusion, canner, recycler, scrapbox, uu, refining.
-- [ ] Reload-safe: подписка на IC2 `registerListener` + `onServerReload` → переприменение.
-- [ ] Acceptance: add/remove мацератора виден в игре и в JEI; `/reload` не плодит дубли.
+### Фаза 4 — Машинные рецепты (ядро) — ✅ ЯДРО СДЕЛАНО И ПРОВЕРЕНО В РАНТАЙМЕ (2026-07-03)
+- [x] TypeWrappers: JS → `IInput` с учётом count (`IC2Conversions.toInput`: `ItemInput`/`ItemStackInput`/`ItemTagInput`, префикс `"Nx "`, `#tag`). Зарегистрирован только `IInput` (⚠️ **НЕ** `ResourceLocation` — KubeJS уже его регистрирует, повторная регистрация кидает `Wrapper already exists` и валит CONSTRUCT). Выходы: `SimpleRecipeOutput`/`ChanceRecipeOutput`/`RangeRecipeOutput`/XP через `ItemWithNBTGenerator` (NBT+count).
+- [x] `EventGroup "IC2Events"` (auto-биндится как глобал: `BuiltinKubeJSPlugin.registerBindings` итерирует `EventGroup.getGroups()`) + server-эвент `recipes` → `IC2RecipesEventJS`. Аксессоры `event.<machine>` для 9 plain-списков: macerator, extractor, compressor, sawmill, massFabricator, furnace, blastFurnace, smoker, mixingFurnace. Методы: `add / addXp / addChance / addRange / remove(id) / removeByOutput / removeByInput`. Опц. первый арг — явный id (эвристика `looksLikeId`).
+- [x] **Спец-обёртки (2026-07-03, проверено рантаймом):** `recycler` (`IRecyclerRecipeList extends IMachineRecipeList` → добавлен прямо в `Machines`, получает add/chance/range/remove даром); `electrolyzer` (addCharge/addDischarge/addDual(input,output,energy)+remove), `scrapbox` (addDrop(item,chance)/removeDrop), `fusion` (addFuel(item,value,rate,consumed)/removeFuel), `uuMatter` (addEntry(item,uu)/removeByOutput), `canner` (addFuel/addFuelMultiplier/removeFuel/addFillable/removeFillable). Все `extends IListenableRegistry` → тот же deferred-apply. Общая база `RecordingWrapper<X>`, обобщённый `IC2RecipeApplier.registerBoth(...)`.
+- [x] **Флюиды + refining + fluidFuels (2026-07-03, проверено рантаймом):** `IC2Conversions.toFluidStack/toFluid/toFluidInput` (JS→`net.minecraftforge.fluids.FluidStack` через `FluidStackJS.of`, count в mB, default 1000). `fluidFuels` (публичный `RecipeRegistry.FLUID_FUELS`): addFuel(fluid,ticksPerBucket,euPerTick)/removeFuel. **`refining`** — единственный реестр без поля в публичном `RecipeRegistry` (API-интерфейс `IRefiningRecipeList` есть, но забыт); достаётся через **internal `ic2.core.IC2.RECIPES.get(sim).refining`** (guarded try/catch → при смене версий IC2 деградирует с warn). Fluent-билдер: `event.refining.add(id?).firstFluid/secondFluid/catalyst/fluidOutput/itemOutput.build()`; выход `SimpleFluidOutput(itemGens, fluidStacks)`, пустой катализатор `EmptyInput.INSTANCE`. Лог: `registered IC2 reload listeners (10 machines + 6 special + refining)`, все 17 `applied`.
+- [x] **`rareEarth` + `potionBrewing` (2026-07-03, проверено рантаймом):** публичные (`RecipeRegistry.RARE_EARTH`/`POTION_BREWING`). `rareEarth`: addOutput(item)/addInput(weight,...items)/remove/removeInput/removeOutput. `potionBrewing`: addBrew(item,effect[,second])/removeBrew — эффекты через `IC2Conversions.toMobEffect` (id→`ForgeRegistries.MOB_EFFECTS`). Лог: `10 machines + 8 special + refining`, 19× `applied`. **Все рецептурные реестры IC2 теперь покрыты.**
+- [x] **Reload-safe (ключевой нюанс):** `onServerReload` в KubeJS выполняется **РАНЬШЕ**, чем IC2 перестраивает рецепты из датапака (в логе: KubeJS-скрипты → потом `IC2Classic: Loading Recipes`), и IC2 очищает список при загрузке → прямое применение затирается. Решение: эвент **записывает** операции (`MachineRecipeWrapper` копит `Consumer<IMachineRecipeList>`), а применяются они из **IC2 `registerListener`** (`IC2RecipeApplier`), который срабатывает *после* наполнения списка. Листенеры вешаются один раз на обе стороны `SidedObject.get(true/false)` (дедуп по identity). Идемпотентность: каждый add делает `removeRecipe(id)` перед `addRecipe`.
+- [x] **Acceptance (рантайм, runClient + загрузка мира):** `macerator: applied +2/-1; list now has 60 recipes` (база IC2 на месте, наши сосуществуют), `removeByOutput` работает; **`/reload` не плодит дубли (60→60)**, `Reloaded with no KubeJS errors!`. Срабатывает и на загрузке мира, и на `/reload`.
+
+**Файлы Фазы 4:** `recipe/IC2Conversions.java` (JS→IInput/генераторы/RL/числа/auto-id), `recipe/RecordingWrapper.java` (общая база: запись `Consumer<X>` + счётчики + applyTo), `recipe/MachineRecipeWrapper.java` (машины, auto-id), `recipe/Machines.java` (реестр name→SidedObject, 10 машин), `recipe/IC2RecipeApplier.java` (collect + обобщённый `registerBoth` листенер на 10+5), `recipe/special/{Electrolyzer,Scrapbox,Fusion,UuMatter,Canner,FluidFuels,Refining,RareEarth,PotionBrew}Wrapper.java` (Refining с fluent-`Builder`), `event/IC2Events.java` (EventGroup), `event/IC2RecipesEventJS.java` (аксессоры). Пример: `examples/server_scripts/ic2_recipes_example.js`. **⚠️ IC2RecipeApplier импортирует `ic2.core.IC2`/`ic2.core...GlobalRecipes` (internal) ради refining — единственная зависимость от не-API IC2, обёрнута в try/catch.**
 
 ### Фаза 5 — Счётные крафты верстака
 - [ ] Обёртка `IC2Crafting` над `IAdvancedCraftingManager`: `shaped/shapeless/remove` + smelting/stonecutter/smithing/repair, с сохранением count из `Item.of(id, N)`.
@@ -226,4 +232,26 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - Первый `runClient` долгий: ForgeGradle качает assets/natives + деобфусцирует IC2/CarbonConfig (кэш в `~/.gradle/caches/forge_gradle/deobf_dependencies/`).
 - `runClient` открывает GL-окно — работает на реальном рабочем столе (не headless). Логи пишем в `run/*.log` (gitignored).
 
-**Следующий шаг: Фаза 4 — ядро машинных рецептов** (TypeWrappers JS→`IInput`/`IRecipeOutput`, `EventGroup "IC2Events"` с `.<machine>.add/remove` по `RecipeRegistry.*`).
+### 2026-07-03 — Фаза 4 (ядро машинных рецептов) доведена до рабочего рантайма
+Итог: **`IC2Events.recipes(event => …)` работает в игре.** Реализованы 9 plain-машин с `add/addXp/addChance/addRange/remove/removeByOutput/removeByInput`; JS→`IInput`/выходы с сохранением count; auto-id по выходу+входу. За сессию:
+- API сверен `javap` (RecipeRegistry, IMachineRecipeList, IInput-реализации, генераторы/выходы, KubeJS EventGroup/EventHandler/EventJS, `ItemStackJS.of`).
+- **2 рантайм-бага найдены и закрыты через runClient + загрузку мира:**
+  1. Повторная регистрация TypeWrapper `ResourceLocation` (KubeJS уже его регистрирует) → `Wrapper already exists` валил CONSTRUCT. Убрано (регистрируем только `IInput`).
+  2. **Порядок применения:** `onServerReload` идёт раньше `IC2Classic: Loading Recipes`, IC2 чистит список → прямые add затирались (в логе было `macerator has 2 recipes` = только наши). Переделано на **deferred-apply**: эвент пишет операции, применение — из IC2 `registerListener` после наполнения. Итог: `macerator: applied +2/-1; list now has 60`.
+- Acceptance подтверждён логами: база IC2 на месте, наши рецепты сосуществуют, `/reload` не плодит дубли (60→60), `Reloaded with no KubeJS errors!`.
+- Файлы: `recipe/{IC2Conversions,MachineRecipeWrapper,Machines,IC2RecipeApplier}.java`, `event/{IC2Events,IC2RecipesEventJS}.java`, плагин, `examples/server_scripts/ic2_recipes_example.js`.
+
+### 2026-07-03 (продолжение) — Спец-обёртки Фазы 4
+Добавлены обёртки для нестандартных реестров, проверено рантаймом (загрузка мира):
+- **recycler** — оказался `IRecyclerRecipeList extends IMachineRecipeList`, поэтому просто добавлен в `Machines.ALL` (получил add/chance/range/remove даром). `Machines.Def` → `SidedObject<? extends IMachineRecipeList>`.
+- **electrolyzer / scrapbox / fusion / uuMatter / canner** — свои API, все `extends IListenableRegistry` → тот же deferred-apply. Выделена общая база `RecordingWrapper<X>` (запись `Consumer<X>`), `MachineRecipeWrapper` перенесён на неё. `IC2RecipeApplier` обобщён: `registerBoth(SidedObject<? extends X>, …)` вешает листенер на обе стороны для 10 машин + 5 спец-реестров.
+- Лог: `registered IC2 reload listeners (10 machines + 5 special)` + 15 строк `applied +N/-M`, без ошибок.
+- **refining отложен** (флюидный builder `IRefiningRecipeList.Builder`, FluidStack in/out) — вместе с фундаментом под флюиды.
+
+### 2026-07-03 (продолжение) — Refining + флюиды: Фаза 4 полностью закрыта
+- **Флюиды:** `IC2Conversions.toFluidStack/toFluid/toFluidInput` через `FluidStackJS.of` (JS→Forge `FluidStack`, mB, default 1000), `fluidId`.
+- **fluidFuels** — чистый публичный (`RecipeRegistry.FLUID_FUELS`): addFuel/removeFuel.
+- **refining** — обнаружено: `IRefiningRecipeList` есть в API, но **не выведен в `RecipeRegistry`** (единственный такой). Доступ — через internal `ic2.core.IC2.RECIPES` (`SidedGateway<GlobalRecipes>`) → `global.refining` (`RefiningRecipeList implements IRefiningRecipeList`). Обёрнуто в try/catch (деградация при смене IC2). Fluent-билдер (`firstFluid/secondFluid/catalyst/fluidOutput/itemOutput/build`), выход `SimpleFluidOutput`.
+- Рантайм: `registered IC2 reload listeners (10 machines + 6 special + refining)` + 17× `applied`, без ошибок. **Фаза 4 закрыта полностью.**
+
+**Следующий шаг: Фаза 5** (счётные крафты верстака через `RecipeRegistry.CRAFTING` = `IAdvancedCraftingManager`: addShaped/addShapeless с сохранением count через `IInput`).

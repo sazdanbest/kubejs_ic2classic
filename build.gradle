@@ -29,6 +29,11 @@ minecraft {
             workingDirectory project.file('run')
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
+            // Remap SRG names in third-party mixin refmaps (KubeJS/IC2/…) to the official
+            // mappings used by this dev runtime, so their @Inject targets (e.g. m_5705_) resolve.
+            // Uses the SRG→MCP mapping ForgeGradle generates via the :createSrgToMcp task.
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', project.file('build/createSrgToMcp/output.srg').absolutePath
             mods {
                 "${mod_id}" {
                     source sourceSets.main
@@ -51,35 +56,52 @@ minecraft {
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 repositories {
-    // Local jars live in ./libs — see libs/README.md
+    // Local jars live in ./libs — see libs/README.md (only IC2Classic is sourced locally).
     flatDir { dir 'libs' }
-    // BlameJared — JEI, Rhino, KubeJS mirrors
-    maven { url = 'https://maven.blamejared.com' }
-    // Saps.dev — KubeJS / Rhino / Architectury
-    maven { url = 'https://maven.saps.dev/releases' }
-    // CurseMaven — fallback for anything not on the above (e.g. Architectury API)
-    maven { url = 'https://cursemaven.com' }
+    // Architectury API — official maven (architectury-forge for 1.19.2: 6.5.82..6.6.92).
+    maven { url = 'https://maven.architectury.dev/' }
+    // Saps.dev — KubeJS / Rhino (dev jars, so fg.deobf actually applies).
+    maven {
+        url = 'https://maven.saps.dev/releases'
+        content { includeGroup 'dev.latvian.mods' }
+    }
+    // BlameJared — JEI.
+    maven {
+        url = 'https://maven.blamejared.com'
+        content { includeGroup 'mezz.jei' }
+    }
+    // CurseMaven — fallback for anything not on the above.
+    maven {
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
+    }
     mavenCentral()
 }
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
-    // --- IC2Classic: only the ic2.api.* package is needed to compile; real jar goes in run/mods at runtime ---
-    compileOnly fg.deobf(files('libs/IC2Classic-1.19.2-2.1.3.3.jar'))
+    // --- IC2Classic: not on any maven, so it comes from the local flatDir repo. Using MODULE
+    //     notation (group:name:version) instead of files(...) lets fg.deobf ACTUALLY remap the jar
+    //     to dev mappings, so a real IC2 loads at runClient (dev test). The flatDir repo
+    //     matches libs/IC2Classic-1.19.2-2.1.3.3.jar as `:IC2Classic:1.19.2-2.1.3.3` (group ignored). ---
+    implementation fg.deobf("ic2:IC2Classic:1.19.2-2.1.3.3")
 
-    // --- KubeJS + Rhino (local jars) ---
-    implementation fg.deobf(files('libs/kubejs-forge-1902.6.2-build.73.jar'))
-    implementation fg.deobf(files('libs/rhino-forge-1902.2.3-build.284.jar'))
+    // --- CarbonConfig (Speiger): mandatory runtime dependency of IC2Classic (needs >=1.19.2-2.0.0).
+    //     Not on a plain maven; pulled from CurseForge via CurseMaven (project carbon-config=898104,
+    //     file 7842759 = CarbonConfig-1.19.2-2.0.0 Forge). ---
+    implementation fg.deobf("curse.maven:carbon-config-898104:7842759")
 
-    // --- JEI (local jar) ---
-    compileOnly  fg.deobf(files('libs/jei-1.19.2-forge-11.8.1.1034.jar'))
-    runtimeOnly  fg.deobf(files('libs/jei-1.19.2-forge-11.8.1.1034.jar'))
+    // --- KubeJS + Rhino (maven → fg.deobf applies, so dev mappings match for runClient) ---
+    implementation fg.deobf("dev.latvian.mods:kubejs-forge:${kubejs_version}")
+    implementation fg.deobf("dev.latvian.mods:rhino-forge:${rhino_version}")
 
     // --- Architectury API (required by KubeJS at runtime) ---
-    // TODO(Phase 2): drop the jar into libs/ (>=6.5.82) and switch to files(...),
-    // or resolve via CurseMaven, e.g.:
-    // implementation fg.deobf("curse.maven:architectury-api-419699:<fileId>")
+    implementation fg.deobf("dev.architectury:architectury-forge:${architectury_version}")
+
+    // --- JEI (maven) ---
+    compileOnly  fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
+    runtimeOnly  fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
 }
 
 // Reproducible manifest values pulled from gradle.properties

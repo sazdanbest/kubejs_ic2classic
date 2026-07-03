@@ -27,14 +27,29 @@
 - **git** инициализирован (`main`), коммиты есть; `.gitattributes` (LF для `gradlew`).
 - **Проверено на JDK 17:** `./gradlew tasks` и `./gradlew compileJava` → BUILD SUCCESSFUL (код компилируется против реального KubeJS API).
 
-Что дальше (не сделано):
-- **Architectury API jar (≥6.5.82, 1.19.2 Forge) не добавлен** — единственный блокер для `runClient`. Положить в `libs/`, раскомментить `implementation` в `build.gradle` (место с TODO). Это старт Фазы 2.
-- IDEA: импорт как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`, плагин *Minecraft Development*.
-- Нюанс рантайма: `fg.deobf(files(...))` — **no-op** (варнинг "not deobfuscated"). На компиляцию не влияет, но для `runClient` KubeJS/Rhino подключать через `flatDir` (уже в repositories) с module-нотацией или CurseMaven, иначе dev-маппинги не совпадут.
+**Фаза 2 (зависимости) — ПОЛНОСТЬЮ СДЕЛАНА, runClient работает (2026-07-03):**
+- Зависимости переведены на **Maven/flatDir-координаты** с рабочим `fg.deobf` (чинит dev-маппинги; `files(...)` был no-op):
+  - Architectury `6.6.92` ← `maven.architectury.dev` (для 1.19.2 доступны 6.5.82/6.5.85/6.5.90/6.6.92).
+  - KubeJS `1902.6.2-build.73` + Rhino `1902.2.3-build.284` ← `maven.saps.dev/releases` (`dev.latvian.mods`).
+  - JEI `11.8.1.1034` ← `maven.blamejared.com` (`mezz.jei:jei-1.19.2-forge`).
+  - **IC2** ← локальный `libs/` через **module-нотацию** `fg.deobf("ic2:IC2Classic:1.19.2-2.1.3.3")` (не `files()`!) → реально деобфусцируется, грузится в рантайме. `implementation` (нужен и в компайле, и в рантайме).
+  - **CarbonConfig `1.19.2-2.0.0`** ← CurseMaven (`curse.maven:carbon-config-898104:7842759`) — **обязательная зависимость IC2** (без неё IC2 не грузится).
+  - Версии — в `gradle.properties`. `ic2_version_range` исправлен на `[1.19.2-2.1.3.3,)` (реальная версия IC2 `1.19.2-2.1.3.3` не попадала в старый `[2.1,)`).
+- **Фикс миксинов KubeJS в dev:** в run-конфигах заданы `mixin.env.remapRefMap=true` + `mixin.env.refMapRemappingFile=build/createSrgToMcp/output.srg` — иначе прод-refmap (SRG-имена типа `m_5705_`) не резолвится в `official`-маппинге dev, и KubeJS падает на APPLY.
+- **Проверено на JDK 17:**
+  - `./gradlew build` → BUILD SUCCESSFUL, jar в `build/libs/`.
+  - **`./gradlew runClient` → ПОЛНАЯ ЗАГРУЗКА до главного меню.** IC2 + KubeJS + Rhino + Architectury + JEI + CarbonConfig + наш мод грузятся без крашей (лог: `OpenAL initialized`, `Sound engine started`, IC2 `Search Tree`, JEI-атлас). **KubeJS находит наш плагин: `[KubeJS] Found plugin source kubejs_ic2classic`** → это и acceptance Фазы 3.
 
-**Как собрать из консоли:**
+⚠️ **`runServer` (dedicated) в dev НЕ поднимается** — и IC2, и KubeJS падают на CONSTRUCT именно на серверном dist: KubeJS тянет клиентский класс `BlockColor` (RuntimeDistCleaner: "invalid dist DEDICATED_SERVER"), IC2 — NPE в `IC2Config.save` (`getCurrentServer()==null`). Это **dev-userdev-специфика**, не наш баг (в проде обе моды на серверах работают). Вывод: **в dev тестируем через `runClient`**; тест выделенного сервера (Фаза 7) — только на реальном прод-наборе jar, не через `runServer`.
+
+Что дальше (не сделано):
+- IDEA: импорт как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`, плагин *Minecraft Development*.
+- **Фаза 4 (ядро машинных рецептов) — следующий содержательный шаг.**
+
+**Как собрать/запустить из консоли:**
 ```bash
-JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-17.0.19.10-hotspot" ./gradlew compileJava
+JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-17.0.19.10-hotspot" ./gradlew build
+JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-17.0.19.10-hotspot" ./gradlew runClient   # dev-тест
 ```
 
 ---
@@ -51,8 +66,10 @@ JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-17.0.19.10-hotspot" ./gradlew c
 | IC2Classic | `1.19.2-2.1.3.3` | `ic2` |
 | KubeJS | `1902.6.2-build.73` | `kubejs` |
 | Rhino | `1902.2.3-build.284` | `rhino` |
-| Architectury | **≥ 6.5.82 — jar ещё НЕ добавлен в корень** | `architectury` |
+| Architectury | `6.6.92` (maven.architectury.dev; для 1.19.2: 6.5.82..6.6.92) | `architectury` |
 | JEI | `1.19.2-forge-11.8.1.1034` | `jei` |
+
+> Начиная с Фазы 2, KubeJS/Rhino/Architectury/JEI тянутся из **Maven** (см. `build.gradle`/`gradle.properties`), а не из локальных jar. Локальным `compileOnly` остаётся только IC2. Реф-jar-ы в `libs/` больше не на build-класспасе (кроме IC2).
 
 Исходников IC2 нет — только jar + распакованные `.class` в `./ic2/`. Для компиляции нужен только пакет **`ic2.api.*`** (читается через `javap`); в рантайме — реальный jar.
 
@@ -136,17 +153,21 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - [ ] IDEA: импортировать как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`.
 - [ ] Acceptance: `./gradlew build` (нужен Architectury в classpath для рантайма) + `runClient`. **Блокер: Architectury jar ещё не добавлен** (см. libs/README.md).
 
-### Фаза 2 — Зависимости
-- [ ] IC2: `compileOnly files('libs/IC2Classic-1.19.2-2.1.3.3.jar')` (нужен только `ic2.api.*`).
-- [ ] KubeJS/Rhino/Architectury/JEI: через CurseMaven **или** локальные jar из корня. Версии — см. таблицу. **Добавить Architectury ≥6.5.82** (его jar ещё нет).
-- [ ] В `run/mods/`: реальные jar (IC2 + KubeJS + Rhino + Architectury + JEI) для запуска с настоящим IC2.
-- [ ] Acceptance: проект компилируется против `ic2.api.*` и KubeJS API; `runClient` поднимается с IC2+KubeJS+JEI.
+### Фаза 2 — Зависимости — ✅ СДЕЛАНА ПОЛНОСТЬЮ (2026-07-03)
+- [x] IC2: `implementation fg.deobf("ic2:IC2Classic:1.19.2-2.1.3.3")` через flatDir module-нотацию (деобфусцируется, грузится в рантайме).
+- [x] KubeJS/Rhino/Architectury/JEI: на **Maven** с рабочим `fg.deobf`. Architectury `6.6.92`. Версии в `gradle.properties`.
+- [x] **CarbonConfig `1.19.2-2.0.0`** (обязат. зависимость IC2) через CurseMaven. `ic2_version_range` исправлен.
+- [x] Фикс миксинов KubeJS в dev: `mixin.env.remapRefMap` + `refMapRemappingFile` в run-конфигах.
+- [x] Классподход вместо `run/mods/`: моды подключены на класспас через `fg.deobf` (стандарт, лучше чем прод-jar в run/mods). Папка `run/mods/` не нужна.
+- [x] Acceptance (компиляция): `./gradlew build` → BUILD SUCCESSFUL; jar в `build/libs/`.
+- [x] **Acceptance (рантайм): `./gradlew runClient` — полная загрузка до меню с IC2+KubeJS+Rhino+Architectury+JEI+CarbonConfig, без крашей; наш плагин найден KubeJS-ом.**
+- [~] `runServer` (dedicated) в dev не поднимается — dev-специфика dist (IC2 NPE + KubeJS client-класс), не наш баг. Тест сервера отложен на Фазу 7 (реальный прод-набор).
 
 ### Фаза 3 — Каркас плагина
 - [x] `META-INF/mods.toml`: `modId=kubejs_ic2classic`, зависимости `forge`+`minecraft`+`kubejs`+`ic2`(mandatory), `jei`(optional), `ordering=AFTER`. **Сделано.**
 - [x] `kubejs.plugins.txt` → FQN `com.sazdan.kubejsic2classic.KubeJSIC2ClassicPlugin`. **Сделано.**
 - [x] `KubeJSIC2ClassicPlugin extends KubeJSPlugin` + `registerBindings(BindingsEvent)` → `IC2Recipes` (пока smoke-test строка). Сигнатуры сверены `javap`: `event.add(String,Object)`, `event.getType()`. **Сделано.**
-- [ ] Acceptance: в игре `console.log(IC2Recipes)` не падает (нужен runClient с Architectury).
+- [x] Acceptance (частично): `runClient` поднимается, KubeJS находит плагин (`Found plugin source kubejs_ic2classic`), CONSTRUCT без ошибок. Осталось проверить `console.log(IC2Recipes)` из скрипта в игре.
 
 ### Фаза 4 — Машинные рецепты (ядро)
 - [ ] TypeWrappers: JS → `IInput` (`ItemInput`/`ItemTagInput`/`ItemStackInput`/`FluidInput`) с учётом count; JS → `IRecipeOutput` (`SimpleRecipeOutput`/`ChanceRecipeOutput`/`RangeRecipeOutput`, XP, NBT).
@@ -186,3 +207,23 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - `src/main/resources/` — `META-INF/mods.toml`, `pack.mcmeta`, `kubejs.plugins.txt`.
 - `build.gradle`, `settings.gradle`, `gradle.properties`, `gradlew(.bat)`, `gradle/wrapper/`.
 - **kubejs-thermal** остаётся референсом (структура плагина, `kubejs.plugins.txt`), но RecipeSchema для IC2 НЕ применима — рецепты не в RecipeManager.
+
+---
+
+## Журнал сессий
+
+### 2026-07-03 — Фаза 2 (зависимости) доведена до рабочего `runClient`
+Итог: **проект собирается и запускается в dev** со всем стеком. Детали — в разделе «Текущий статус» выше. Кратко, что сделано за сессию:
+- Зависимости переведены с локальных `files()` на **Maven/flatDir + рабочий `fg.deobf`** (это же починило dev-маппинги, ранее `files()` давал no-op).
+- Добавлен **Architectury `6.6.92`** (`maven.architectury.dev`) — снят главный блокер рантайма.
+- Найдены и закрыты 3 скрытых блокера запуска: (1) **CarbonConfig** — обязательная зависимость IC2 (CurseMaven); (2) `ic2_version_range` не матчил реальную версию IC2 `1.19.2-2.1.3.3`; (3) **миксины KubeJS** падали в official-dev — вылечено `mixin.env.remapRefMap` + `refMapRemappingFile`.
+- **`./gradlew build` и `./gradlew runClient` → успех**, клиент грузится до меню, KubeJS видит наш плагин.
+- Установлено: **`runServer` в dev не поднимается** (dist-специфика IC2/KubeJS) — dev-тест только через `runClient`.
+- Правки: `build.gradle`, `gradle.properties`, `libs/README.md`, `CLAUDE.md`. Память проекта обновлена.
+
+**Операционные памятки (важно для новой сессии):**
+- Сборка/запуск ТОЛЬКО с `JAVA_HOME=...jdk-17...` (Gradle не идёт на JDK 25).
+- Первый `runClient` долгий: ForgeGradle качает assets/natives + деобфусцирует IC2/CarbonConfig (кэш в `~/.gradle/caches/forge_gradle/deobf_dependencies/`).
+- `runClient` открывает GL-окно — работает на реальном рабочем столе (не headless). Логи пишем в `run/*.log` (gitignored).
+
+**Следующий шаг: Фаза 4 — ядро машинных рецептов** (TypeWrappers JS→`IInput`/`IRecipeOutput`, `EventGroup "IC2Events"` с `.<machine>.add/remove` по `RecipeRegistry.*`).

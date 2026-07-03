@@ -1,19 +1,30 @@
 # libs/
 
-Local binary dependencies used by `build.gradle` (`fg.deobf(files('libs/...'))`).
-These jars are **git-ignored** (large / not ours to redistribute). Populate this folder
-before building:
+Local binary dependencies used by `build.gradle`. Git-ignored (large / not ours to
+redistribute).
 
-| File | modId | Notes |
+**Since Phase 2 (2026-07-03) almost everything comes from Maven** — the only jar you must
+place here is IC2Classic (it is not published to any Maven). The reference jars can stay for
+convenience but are **not** on the build classpath anymore.
+
+| File | modId | Role |
 |---|---|---|
-| `IC2Classic-1.19.2-2.1.3.3.jar` | `ic2` | `compileOnly` — only `ic2.api.*` is needed to compile; the real jar goes in `run/mods/` at runtime. |
-| `kubejs-forge-1902.6.2-build.73.jar` | `kubejs` | `implementation`. |
-| `rhino-forge-1902.2.3-build.284.jar` | `rhino` | `implementation` (KubeJS scripting engine). |
-| `jei-1.19.2-forge-11.8.1.1034.jar` | `jei` | `compileOnly` + `runtimeOnly`. |
+| `IC2Classic-1.19.2-2.1.3.3.jar` | `ic2` | **REQUIRED locally.** Resolved via the `flatDir { dir 'libs' }` repo using *module notation* `fg.deobf("ic2:IC2Classic:1.19.2-2.1.3.3")` (NOT `files(...)` — that would skip deobf). Loaded at both compile and runtime. |
 | `kubejs-thermal-1902.1.9-build.16.jar` | — | Reference only (plugin structure). Not on the build classpath. |
-| **Architectury API `>= 6.5.82` (1.19.2 Forge)** | `architectury` | **NOT YET ADDED.** Required by KubeJS at runtime. Add the jar here and enable the `implementation files(...)` line in `build.gradle`, or resolve via CurseMaven. |
+| `kubejs-forge-*.jar`, `rhino-forge-*.jar`, `jei-*.jar` | — | Legacy local copies; **no longer used** — now pulled from Maven (see below). Safe to delete. |
 
-## run/mods/
+## Maven-sourced deps (see `build.gradle` / `gradle.properties`)
 
-For `runClient` / `runServer` with a real IC2, copy the actual (non-dev) jars into
-`run/mods/`: IC2Classic + KubeJS + Rhino + Architectury + JEI.
+| modId | Coordinate | Repo |
+|---|---|---|
+| `kubejs` / `rhino` | `dev.latvian.mods:kubejs-forge` / `rhino-forge` | `maven.saps.dev/releases` |
+| `architectury` | `dev.architectury:architectury-forge:6.6.92` | `maven.architectury.dev` |
+| `jei` | `mezz.jei:jei-1.19.2-forge:11.8.1.1034` | `maven.blamejared.com` |
+| `carbonconfig` | `curse.maven:carbon-config-898104:7842759` (v1.19.2-2.0.0) | `cursemaven.com` — **mandatory dep of IC2** |
+
+## Running
+
+Dev test = **`./gradlew runClient`** (JDK 17). Mods load from the classpath via `fg.deobf`, so
+**`run/mods/` is not needed**. Note: `runServer` (dedicated) does not boot in the dev userdev
+environment (IC2/KubeJS dist-specific crashes at CONSTRUCT — not our bug); test a dedicated
+server later with a real production jar set.

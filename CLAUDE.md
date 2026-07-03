@@ -14,6 +14,31 @@
 
 ---
 
+## Текущий статус (обновлено 2026-07-03)
+
+**Готово: Фаза 0 (тулчейн) + Фаза 1 (скелет). Проект собирается и компилируется.**
+
+Сделано в этой сессии:
+- Поставлен **JDK 17** (Temurin, winget). Gradle обязан идти на 17 (см. ниже).
+- Скелет Forge-мода написан вручную **прямо в этой папке** (`ic2classic_sazdanFix`): `build.gradle` (ForgeGradle 6.0), `settings.gradle`, `gradle.properties`, wrapper Gradle **8.1.1**, `gradlew(.bat)`.
+- Идентичность: **modId `kubejs_ic2classic`**, пакет `com.sazdan.kubejsic2classic`. Классы `KubeJSIC2Classic` (@Mod) + `KubeJSIC2ClassicPlugin extends KubeJSPlugin` (пока smoke-test биндинг `IC2Recipes`; сигнатуры KubeJS `event.add(String,Object)`/`getType()` сверены `javap`).
+- `mods.toml` (deps forge/minecraft/kubejs/ic2 mandatory, jei optional), `pack.mcmeta`, `kubejs.plugins.txt`.
+- Реорг файлов: все jar-ы → `libs/`, распакованный IC2 → `reference/ic2-extracted/` (оба в `.gitignore`).
+- **git** инициализирован (`main`), коммиты есть; `.gitattributes` (LF для `gradlew`).
+- **Проверено на JDK 17:** `./gradlew tasks` и `./gradlew compileJava` → BUILD SUCCESSFUL (код компилируется против реального KubeJS API).
+
+Что дальше (не сделано):
+- **Architectury API jar (≥6.5.82, 1.19.2 Forge) не добавлен** — единственный блокер для `runClient`. Положить в `libs/`, раскомментить `implementation` в `build.gradle` (место с TODO). Это старт Фазы 2.
+- IDEA: импорт как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`, плагин *Minecraft Development*.
+- Нюанс рантайма: `fg.deobf(files(...))` — **no-op** (варнинг "not deobfuscated"). На компиляцию не влияет, но для `runClient` KubeJS/Rhino подключать через `flatDir` (уже в repositories) с module-нотацией или CurseMaven, иначе dev-маппинги не совпадут.
+
+**Как собрать из консоли:**
+```bash
+JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-17.0.19.10-hotspot" ./gradlew compileJava
+```
+
+---
+
 ## Окружение и версии
 
 **Установлено:** JDK 25 + **JDK 17** (Temurin, `C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot`), IntelliJ IDEA 2026.1 (+ поставить плагин *Minecraft Development*), git, Node.

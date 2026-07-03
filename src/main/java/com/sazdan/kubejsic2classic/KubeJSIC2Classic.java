@@ -1,6 +1,7 @@
 package com.sazdan.kubejsic2classic;
 
 import com.mojang.logging.LogUtils;
+import com.sazdan.kubejsic2classic.net.IC2Net;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
 
@@ -18,5 +19,6 @@ public final class KubeJSIC2Classic {
 
     public KubeJSIC2Classic() {
         LOGGER.info("[{}] Forge mod container constructed", MOD_ID);
+        IC2Net.init();
     }
 }

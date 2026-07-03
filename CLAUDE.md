@@ -16,7 +16,7 @@
 
 ## Текущий статус (обновлено 2026-07-03)
 
-**Готово: Фазы 0–5. Проект собирается, компилируется и проверен в рантайме (машинные рецепты + счётные крафты верстака). Дальше — Фаза 6 (JEI).**
+**Готово: Фазы 0–6. Проект собирается, компилируется и проверен в рантайме (машинные рецепты + счётные крафты верстака + JEI-интеграция count-крафтов). Дальше — Фаза 7 (тесты/релиз).**
 
 Сделано в этой сессии:
 - Поставлен **JDK 17** (Temurin, winget). Gradle обязан идти на 17 (см. ниже).
@@ -46,9 +46,12 @@
 
 **Фаза 5 (счётные крафты верстака) — ✅ СДЕЛАНА И ПРОВЕРЕНА В РАНТАЙМЕ (2026-07-03).** Добавлен `event.crafting` (внутри `IC2Events.recipes`, НЕ отдельный глобал — reload-safe через тот же deferred-apply): `shaped/shapeless` (count честно сохраняется через IC2 `IInput`), `smelting/stonecutter/smithing` (+ removes). Backend — `RecipeRegistry.CRAFTING` (`IAdvancedCraftingManager`, единичный). Рантайм: `crafting: applied +5/-0`, без parse-ошибок ванильного RecipeManager. Ключевой баг (IInput ok для shaped/shapeless, но cooking/single/smithing требуют ванильную форму `ItemStack/Tag/Ingredient`) найден и закрыт `IC2Conversions.toVanillaInput`. Детали — в разделе «Фаза 5».
 
+**Фаза 6 (JEI count-крафты) — ✅ КОД ГОТОВ, ЧИСТО ГРУЗИТСЯ В РАНТАЙМЕ (2026-07-03).** Уточнение к плану: вместо отдельной JEI-категории (док. «Вариант А») выбран **строго лучший** идиоматичный путь — `ICraftingCategoryExtension` (крафты остаются в ванильной Crafting-категории, без дублей, с честным count из `IInput.getComponents()`). Перенос «+» чинится своим Forge `SimpleChannel`-пакетом (`FillCraftingGridPacket`): JEI-дефолт двигает ровно 1/слот (`RecipeTransferUtil` → `matchingStack.m_41774_(1)`), повторно использовать его count-aware нельзя; IC2-handler `IndustrialWorkbenchTransferHandler` — только для СВОих контейнеров/сети. Наш `IC2CraftingTransferHandler` регистрируется на `(CraftingMenu, minecraft:crafting)` и **wrap-and-delegate**: IC2-крафт (`RecipeIC2Base`) → наш пакет; всё остальное → дефолтный JEI-handler (`createUnregisteredRecipeTransferHandler`) — Risk #3 закрыт. Рантайм: наш плагин прошёл все фазы JEI (`Building recipe registry`, `Starting JEI took 1.708s`, `Registering recipes transfer handlers: kubejs_ic2classic:jei` — ПОСЛЕ `jei:minecraft`, т.е. перекрывает встроенный, без warning-конфликтов), сеть `network channel registered`, крафты применились. **Остался только интерактивный клик-тест** (число в слоте + «+» переносит N + не-IC2 крафты целы) — по природе визуальный. Детали — в разделе «Фаза 6».
+
 Что дальше (не сделано):
 - IDEA: импорт как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`, плагин *Minecraft Development*.
-- **Фазы 4 и 5 — ✅ ЗАКРЫТЫ.** Следующий содержательный шаг — **Фаза 6** (JEI, Вариант А: своя `IRecipeCategory` для IC2-крафтов из `getComponents()` + count-aware `IRecipeTransferHandler` для `CraftingMenu`).
+- **Клик-тест Фазы 6** (ручной, в игре): открыть JEI на count-крафте `ic2:ingot_refined_iron` (P=4 advanced alloy) → проверить «×4» в слотах; поставить верстак 3×3, нажать кнопку переноса → должно класть 4/слот; ванильный крафт (факелы) переносится как обычно.
+- **Фазы 4, 5 и 6 (код) — ✅ ЗАКРЫТЫ.** Следующий содержательный шаг — **Фаза 7** (тесты/регресс/релиз).
 
 **Как собрать/запустить из консоли:**
 ```bash
@@ -197,11 +200,16 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 
 **Файлы Фазы 5:** `recipe/CraftingWrapper.java` (новый); правки в `event/IC2RecipesEventJS.java` (`public final CraftingWrapper crafting`) и `recipe/IC2RecipeApplier.java` (`registerListenerDedup(RecipeRegistry.CRAFTING, …)` — единичный, лог `… + crafting + refining`). Примеры — в `examples/server_scripts/ic2_recipes_example.js` (блок «Count-aware workbench crafts»).
 
-### Фаза 6 — JEI (Вариант А)
-- [ ] Клиентский `IModPlugin`: своя `IRecipeCategory` для IC2-крафтов; слоты из `getComponents()` (с count).
-- [ ] `IRecipeTransferHandler` для `CraftingMenu` + тип `minecraft:crafting`: если `recipe instanceof RecipeIC2Base` → переносить `getInputSize()` предметов в слот; иначе — обычное поведение. Образец: `IndustrialWorkbenchTransferHandler`.
-- [ ] Регистрация рецептов в свою категорию (источник — `RecipeRegistry.CRAFTING`/скан по сериализатору `ic2:crafting_ic2_automated`).
-- [ ] Acceptance: число в слоте корректное; «+» переносит N; не-IC2 крафты не сломаны.
+### Фаза 6 — JEI (count-крафты) — ✅ КОД ГОТОВ, ЧИСТО ГРУЗИТСЯ В РАНТАЙМЕ (2026-07-03)
+**Уточнение к плану (Вариант А → A′):** вместо отдельной `IRecipeCategory` — `ICraftingCategoryExtension` (JEI 11.8): IC2-крафты остаются в **ванильной** Crafting-категории, но мы сами раскладываем сетку с сохранением count. Строго лучше отдельной категории: нет дублей (иначе крафт был бы виден и в ванильной Crafting с count=1, и в нашей), не нужно ничего прятать, канонично.
+- [x] Клиентский `@JeiPlugin` `IC2JeiPlugin implements IModPlugin`: `registerVanillaCategoryExtensions` → `addCategoryExtension(ShapedIC2Recipe.class, IC2ShapedCraftingExtension::new)` + shapeless. Слоты из `IInput.getComponents()` (count цел) через `ICraftingGridHelper.createAndSetInputs/createAndSetOutputs`.
+- [x] `IC2CraftingTransferHandler implements IRecipeTransferHandler<CraftingMenu, CraftingRecipe>`, зарегистрирован на `(CraftingMenu, RecipeTypes.CRAFTING)`. **Wrap-and-delegate:** `recipe instanceof RecipeIC2Base` → шлём `FillCraftingGridPacket`; иначе → дефолтный JEI-handler (`transferHelper.createUnregisteredRecipeTransferHandler(createBasicRecipeTransferInfo(CraftingMenu.class, MenuType.CRAFTING, RecipeTypes.CRAFTING, 1,9,10,36))`). Не-IC2 крафты не тронуты (Risk #3 закрыт). Наш плагин регистрируется ПОСЛЕ `jei:minecraft` → перекрывает встроенный crafting-transfer, без warning-конфликтов.
+- [x] **Перенос count через свой `SimpleChannel`** (`net/IC2Net.java` + `net/FillCraftingGridPacket.java`, C2S). Причина: JEI-дефолт двигает ровно 1/слот (`mezz.jei.common.transfer.RecipeTransferUtil#getRecipeTransferOperations` → `matchingStack.m_41774_(1)`), повторно использовать нельзя; IC2 `IndustrialWorkbenchTransferHandler` шлёт данные в СВОЙ BlockEntity/сеть — для ванильного `CraftingMenu` его нет. Серверная раскладка: рецепт по id из `RecipeManager`, per-slot `IInput` (shaped: `inputs[r*width+c]`→grid `r*3+c`; shapeless: по порядку), очистка сетки (возврат в инвентарь), затем `pullMatching` — изъять `getInputSize()` штук по `IInput.matches` из `Inventory.items`, положить в `menu.getSlot(1+g).container`, `slotsChanged`+`broadcastChanges`. maxTransfer — TODO (пока 1×, чинит базовый баг «1 вместо N»).
+- [x] Источник рецептов: НЕ регистрируем сами — JEI уже держит `ShapedIC2Recipe`/`ShapelessIC2Recipe` (тип `minecraft:crafting`) в ванильной Crafting-категории; extension лишь переопределяет раскладку по классу рецепта.
+- [x] **Acceptance (сборка+рантайм-загрузка):** `./gradlew build` OK; `runClient` → JEI прошёл все фазы для `kubejs_ic2classic:jei` (Registration/Recipes/Transfer/Runtime), `Building recipe registry` + `Starting JEI took 1.708s`, `network channel registered`, крафты применились — **без единого исключения**. Значит все JEI-API вызовы корректны.
+- [ ] **Acceptance (ручной клик-тест, в игре):** число «×4» в слотах count-крафта; кнопка переноса кладёт 4/слот и рецепт матчится; ванильный крафт переносится как обычно. ⚠️ Визуальный — требует ручной проверки.
+
+**Файлы Фазы 6:** `jei/IC2JeiPlugin.java`, `jei/IC2ShapedCraftingExtension.java`, `jei/IC2ShapelessCraftingExtension.java`, `jei/IC2CraftingTransferHandler.java`, `net/IC2Net.java`, `net/FillCraftingGridPacket.java`; правка `KubeJSIC2Classic.java` (+`IC2Net.init()` в конструкторе). **⚠️ Компиляция против official-маппинга: методы рецепта — `getResultItem()`/`getId()`, НЕ SRG `m_8043_`/`m_6423_` (javap по IC2-jar показывает SRG, т.к. jar обфусцирован; deobf-classpath — official).**
 
 ### Фаза 7 — Тесты и релиз
 - [ ] Функц.: add/remove/replace, chance/range/XP/NBT-выходы, счётные крафты, `/reload`.
@@ -280,4 +288,13 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - После теста убивать форкнутый JVM клиента (иначе лок `session.lock` мешает след. запуску): PowerShell по `CommandLine -match 'net.minecraft.client.main.Main'`.
 - Item-id в примерах — только реальные (IC2 использует префиксы `ingot_`/`plate_`/… — сверять по `assets/ic2/lang/items_en_us.json`).
 
-**Следующий шаг: Фаза 6** (JEI, Вариант А: своя `IRecipeCategory` для IC2-крафтов из `getComponents()` + count-aware `IRecipeTransferHandler` для `CraftingMenu`; образец — `ic2.jeiplugin.core.transferhandler.IndustrialWorkbenchTransferHandler`).
+### 2026-07-03 (продолжение) — Фаза 6: JEI count-крафты (код готов, чисто грузится)
+Итог: **JEI-интеграция count-крафтов написана и чисто грузится в рантайме.** За сессию:
+- **Исследование `javap`+CFR-декомпиляция:** `IndustrialWorkbenchTransferHandler` (шлёт содержимое слотов в СВОЙ IC2 BlockEntity/сеть — для ванильного `CraftingMenu` не годится), JEI `RecipeTransferUtil` (дефолт двигает ровно 1/слот → `m_41774_(1)`, count-aware переиспользовать нельзя), `ShapedIC2Recipe`/`ShapelessIC2Recipe` (публичные `inputs` с count через `IInput.getComponents()/getInputSize()`), JEI-API (`ICraftingCategoryExtension`, `IVanillaCategoryExtensionRegistration`, `IRecipeTransferHandlerHelper`).
+- **Решение по архитектуре (уточнение плана):** `ICraftingCategoryExtension` вместо отдельной категории (док. «Вариант А») — крафты в ванильной Crafting-категории с честным count, без дублей. Перенос — свой `SimpleChannel`-пакет (wrap-and-delegate handler: IC2 → наш пакет, остальное → дефолтный JEI-handler через `createUnregisteredRecipeTransferHandler`; Risk #3 закрыт).
+- **Рантайм-подтверждение (runClient + загрузка мира):** плагин `kubejs_ic2classic:jei` прошёл все фазы JEI (Registration/Recipes/`Registering recipes transfer handlers` — ПОСЛЕ `jei:minecraft`, перекрывает встроенный без warning-конфликтов/Runtime), `Building recipe registry` + `Starting JEI took 1.708s`, `network channel registered`, крафты применились — **0 исключений** → все JEI-API вызовы корректны.
+- **Баг компиляции найден и закрыт:** сперва использовал SRG-имена рецепта (`m_8043_`/`m_6423_`, как в `javap` по обфусцированному IC2-jar) → компиляция против official-classpath не видит их. Правка на `getResultItem()`/`getId()`.
+- Файлы: `jei/{IC2JeiPlugin,IC2ShapedCraftingExtension,IC2ShapelessCraftingExtension,IC2CraftingTransferHandler}.java`, `net/{IC2Net,FillCraftingGridPacket}.java`, правка `KubeJSIC2Classic.java`.
+- **Не закрыто:** ручной клик-тест в игре (число в слоте + «+» переносит N + не-IC2 целы) — визуальный; maxTransfer пока 1×.
+
+**Следующий шаг: клик-тест Фазы 6, затем Фаза 7** (функц.-тесты, регресс, клиент↔сервер `RecipeUpdatePacket`, совместимость, README/примеры, публикация CurseForge/Modrinth).

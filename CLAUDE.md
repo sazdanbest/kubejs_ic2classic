@@ -16,8 +16,8 @@
 
 ## Окружение и версии
 
-**Установлено:** JDK 25 (Temurin), IntelliJ IDEA 2026.1 (+ поставить плагин *Minecraft Development*), git, Node.
-**Доставить обязательно:** **JDK 17** (Temurin) — Forge 1.19.2 не работает на JDK 25; Project SDK / Gradle toolchain = 17.
+**Установлено:** JDK 25 + **JDK 17** (Temurin, `C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot`), IntelliJ IDEA 2026.1 (+ поставить плагин *Minecraft Development*), git, Node.
+**ВАЖНО про запуск Gradle:** сам Gradle-демон должен стартовать на **JDK 17** (Forge 1.19.2 / ForgeGradle 6 не идут на JDK 25). В консоли — `JAVA_HOME=...jdk-17...` перед `./gradlew`; в IDEA — *Gradle JVM = 17*, Project SDK = 17.
 
 **Стек зависимостей (jar-ы лежат в корне проекта):**
 | Мод | Версия | modId |
@@ -63,9 +63,9 @@
 ## Архитектура аддона
 
 ```
-Мод kubejs_ic2 (Forge, javafml)
-├── kubejs.plugins.txt  → KubeJSIC2Plugin
-├── KubeJSIC2Plugin extends KubeJSPlugin
+Мод kubejs_ic2classic (Forge, javafml, пакет com.sazdan.kubejsic2classic)
+├── kubejs.plugins.txt  → KubeJSIC2ClassicPlugin
+├── KubeJSIC2ClassicPlugin extends KubeJSPlugin
 │    ├── registerBindings()      → глобалы IC2Recipes, IC2Crafting
 │    ├── registerEvents()        → EventGroup "IC2Events" (recipes handler)
 │    ├── registerTypeWrappers()  → JS → IInput / IRecipeOutput / ItemStack(count)
@@ -99,14 +99,17 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 ## План разработки
 
 ### Фаза 0 — Тулчейн
-- [ ] Поставить **JDK 17** (Temurin). В IDEA — плагин *Minecraft Development*.
-- [ ] Acceptance: `java -version` есть; IDEA видит JDK 17.
+- [x] **JDK 17** (Temurin) поставлен через winget. В IDEA — доставить плагин *Minecraft Development* (руками).
+- [x] Acceptance: `java -version` для JDK 17 ok.
 
-### Фаза 1 — Dev-workspace (Forge MDK 1.19.2)
-- [ ] Forge 1.19.2 MDK (`43.x`) в новую папку (например `D:\Unspace\Projects\kubejs-ic2\`).
-- [ ] `build.gradle`: mappings (parchment/official), Java toolchain 17.
-- [ ] `./gradlew genIntellijRuns`, импорт в IDEA, Project SDK = 17.
-- [ ] Acceptance: `./gradlew build` проходит на пустом MDK, `runClient` стартует.
+### Фаза 1 — Dev-workspace (Forge MDK 1.19.2) — СКЕЛЕТ СОБРАН В ЭТОЙ ЖЕ ПАПКЕ
+Решение: проект живёт прямо в `ic2classic_sazdanFix` (совпадает с конвеншеном аддонов; jar-ы/CLAUDE.md/память уже тут), а не в отдельной папке.
+- [x] Скелет по образцу Forge 1.19.2 MDK, но написан вручную: `build.gradle` (**ForgeGradle 6.0**, Gradle wrapper **8.1.1**), `settings.gradle`, `gradle.properties`, `gradlew`.
+- [x] `build.gradle`: mappings **official** (parchment опционально позже, требует Librarian-плагин), Java toolchain 17, runs client/server/data, `processResources` с подстановкой в mods.toml.
+- [x] Реорг: реф-jar-ы → `libs/` (в .gitignore), распакованный IC2 → `reference/ic2-extracted/` (в .gitignore, там же `ic2/api/**` для `javap`).
+- [x] git инициализирован (`main`), первый коммит сделан. Идентичность: sazdanbest.
+- [ ] IDEA: импортировать как Gradle-проект, Gradle JVM = 17, `genIntellijRuns`.
+- [ ] Acceptance: `./gradlew build` (нужен Architectury в classpath для рантайма) + `runClient`. **Блокер: Architectury jar ещё не добавлен** (см. libs/README.md).
 
 ### Фаза 2 — Зависимости
 - [ ] IC2: `compileOnly files('libs/IC2Classic-1.19.2-2.1.3.3.jar')` (нужен только `ic2.api.*`).
@@ -115,10 +118,10 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - [ ] Acceptance: проект компилируется против `ic2.api.*` и KubeJS API; `runClient` поднимается с IC2+KubeJS+JEI.
 
 ### Фаза 3 — Каркас плагина
-- [ ] `META-INF/mods.toml`: `modId=kubejs_ic2`, зависимости `kubejs`(mandatory), `ic2`(mandatory), `jei`(optional), `ordering=AFTER`.
-- [ ] `kubejs.plugins.txt` → FQN `KubeJSIC2Plugin`.
-- [ ] `KubeJSIC2Plugin extends KubeJSPlugin` с пустыми хуками + `registerBindings` → `IC2Recipes`.
-- [ ] Acceptance: в игре `console.log(IC2Recipes)` не падает.
+- [x] `META-INF/mods.toml`: `modId=kubejs_ic2classic`, зависимости `forge`+`minecraft`+`kubejs`+`ic2`(mandatory), `jei`(optional), `ordering=AFTER`. **Сделано.**
+- [x] `kubejs.plugins.txt` → FQN `com.sazdan.kubejsic2classic.KubeJSIC2ClassicPlugin`. **Сделано.**
+- [x] `KubeJSIC2ClassicPlugin extends KubeJSPlugin` + `registerBindings(BindingsEvent)` → `IC2Recipes` (пока smoke-test строка). Сигнатуры сверены `javap`: `event.add(String,Object)`, `event.getType()`. **Сделано.**
+- [ ] Acceptance: в игре `console.log(IC2Recipes)` не падает (нужен runClient с Architectury).
 
 ### Фаза 4 — Машинные рецепты (ядро)
 - [ ] TypeWrappers: JS → `IInput` (`ItemInput`/`ItemTagInput`/`ItemStackInput`/`FluidInput`) с учётом count; JS → `IRecipeOutput` (`SimpleRecipeOutput`/`ChanceRecipeOutput`/`RangeRecipeOutput`, XP, NBT).
@@ -151,7 +154,10 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 3. **Transfer handler для CraftingMenu** — наш handler заменяет дефолт для типа crafting; для не-IC2 рецептов обязательно сохранить обычное поведение.
 4. **Синхронизация reload** — заложена (IC2 listener + `RecipeUpdatePacket`), но требует явного теста на выделенном сервере.
 
-## Файлы в корне (справка)
-- `IC2Classic-1.19.2-2.1.3.3.jar` + распакованные `./ic2/**.class` (только байткод).
-- `kubejs-forge-1902.6.2-build.73.jar`, `rhino-forge-1902.2.3-build.284.jar`, `jei-1.19.2-forge-11.8.1.1034.jar`.
-- `kubejs-thermal-1902.1.9-build.16.jar` — референс (структура плагина, `kubejs.plugins.txt`, RecipeSchema — но для IC2 схема НЕ применима, т.к. рецепты не в RecipeManager).
+## Раскладка файлов (после реорга)
+- `libs/` (в .gitignore) — все jar-ы: `IC2Classic-1.19.2-2.1.3.3.jar`, `kubejs-forge-...jar`, `rhino-forge-...jar`, `jei-...jar`, `kubejs-thermal-...jar` (референс). См. `libs/README.md`.
+- `reference/ic2-extracted/` (в .gitignore) — распакованный IC2-jar: `ic2/api/**` для `javap` (напр. `javap -cp libs/IC2Classic-1.19.2-2.1.3.3.jar ic2.api.recipes.RecipeRegistry`), плюс `data/`, `assets/`, оригинальные `mods.toml`/mixins IC2.
+- `src/main/java/com/sazdan/kubejsic2classic/` — `KubeJSIC2Classic` (@Mod) + `KubeJSIC2ClassicPlugin`.
+- `src/main/resources/` — `META-INF/mods.toml`, `pack.mcmeta`, `kubejs.plugins.txt`.
+- `build.gradle`, `settings.gradle`, `gradle.properties`, `gradlew(.bat)`, `gradle/wrapper/`.
+- **kubejs-thermal** остаётся референсом (структура плагина, `kubejs.plugins.txt`), но RecipeSchema для IC2 НЕ применима — рецепты не в RecipeManager.

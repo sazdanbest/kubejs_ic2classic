@@ -1,0 +1,53 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+issueTrackerURL="https://github.com/sazdan/kubejs_ic2classic/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+logoFile="logo.png"
+description='''
+KubeJS integration for IC2Classic 1.19.2.
+Adds scriptable add/remove/replace for IC2 machine recipes (macerator, extractor,
+compressor, electrolyzer, canner, recycler, sawmill, mass fabricator, fusion, ...)
+plus count-aware workbench crafts, with proper JEI support.
+'''
+
+# --- Dependencies ---
+[[dependencies.${mod_id}]]
+    modId="forge"
+    mandatory=true
+    versionRange="${forge_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="kubejs"
+    mandatory=true
+    versionRange="${kubejs_version_range}"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="ic2"
+    mandatory=true
+    versionRange="${ic2_version_range}"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="jei"
+    mandatory=false
+    versionRange="${jei_version_range}"
+    ordering="AFTER"
+    side="BOTH"

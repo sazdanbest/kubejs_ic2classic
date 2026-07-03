@@ -1,0 +1,38 @@
+# Gradle / Forge build output
+.gradle/
+build/
+out/
+run/
+runs/
+run_data/
+src/generated/resources/.cache/
+
+# ForgeGradle
+*.launch
+
+# --- Local binary dependencies (not redistributed) ---
+# Populate ./libs per libs/README.md
+libs/*.jar
+
+# --- Decompiled/extracted IC2 used only for javap reference ---
+reference/
+
+# IDE — IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# IDE — Eclipse
+.classpath
+.project
+.settings/
+bin/
+.metadata/
+
+# IDE — VS Code
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store

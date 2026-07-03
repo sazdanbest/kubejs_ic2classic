@@ -1,0 +1,1 @@
+com.sazdan.kubejsic2classic.KubeJSIC2ClassicPlugin

@@ -1,0 +1,136 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+
+version = "${mod_version}"
+group = "${mod_group}"
+
+base {
+    archivesName = "${mod_id}-${minecraft_version}"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+    withSourcesJar()
+}
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+
+minecraft {
+    // Mojang official mappings — no extra plugin needed. Switch to Parchment later if desired.
+    mappings channel: 'official', version: "${minecraft_version}"
+
+    // copyIdeResources = true
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+        client {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+        data {
+            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    // Local jars live in ./libs — see libs/README.md
+    flatDir { dir 'libs' }
+    // BlameJared — JEI, Rhino, KubeJS mirrors
+    maven { url = 'https://maven.blamejared.com' }
+    // Saps.dev — KubeJS / Rhino / Architectury
+    maven { url = 'https://maven.saps.dev/releases' }
+    // CurseMaven — fallback for anything not on the above (e.g. Architectury API)
+    maven { url = 'https://cursemaven.com' }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // --- IC2Classic: only the ic2.api.* package is needed to compile; real jar goes in run/mods at runtime ---
+    compileOnly fg.deobf(files('libs/IC2Classic-1.19.2-2.1.3.3.jar'))
+
+    // --- KubeJS + Rhino (local jars) ---
+    implementation fg.deobf(files('libs/kubejs-forge-1902.6.2-build.73.jar'))
+    implementation fg.deobf(files('libs/rhino-forge-1902.2.3-build.284.jar'))
+
+    // --- JEI (local jar) ---
+    compileOnly  fg.deobf(files('libs/jei-1.19.2-forge-11.8.1.1034.jar'))
+    runtimeOnly  fg.deobf(files('libs/jei-1.19.2-forge-11.8.1.1034.jar'))
+
+    // --- Architectury API (required by KubeJS at runtime) ---
+    // TODO(Phase 2): drop the jar into libs/ (>=6.5.82) and switch to files(...),
+    // or resolve via CurseMaven, e.g.:
+    // implementation fg.deobf("curse.maven:architectury-api-419699:<fileId>")
+}
+
+// Reproducible manifest values pulled from gradle.properties
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+            'Specification-Title'     : mod_id,
+            'Specification-Vendor'    : mod_authors,
+            'Specification-Version'   : '1',
+            'Implementation-Title'    : project.name,
+            'Implementation-Version'  : project.jar.archiveVersion,
+            'Implementation-Vendor'   : mod_authors,
+            'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+}
+
+// Process mods.toml / pack.mcmeta with property substitution
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+        minecraft_version      : minecraft_version,
+        minecraft_version_range: minecraft_version_range,
+        forge_version          : forge_version,
+        forge_version_range    : forge_version_range,
+        loader_version_range   : loader_version_range,
+        mod_id                 : mod_id,
+        mod_name               : mod_name,
+        mod_license            : mod_license,
+        mod_version            : mod_version,
+        mod_authors            : mod_authors,
+        kubejs_version_range   : kubejs_version_range,
+        ic2_version_range      : ic2_version_range,
+        jei_version_range      : jei_version_range,
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties
+    }
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven { url "file://${project.projectDir}/mcmodsrepo" }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

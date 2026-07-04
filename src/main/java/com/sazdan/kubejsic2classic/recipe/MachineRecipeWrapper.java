@@ -54,7 +54,9 @@ public class MachineRecipeWrapper extends RecordingWrapper<IMachineRecipeList> {
     public ResourceLocation addChance(Object... args) {
         Parsed p = parse(args, 1);
         float chance = num(p.middle[0]);
-        return record(p.id, new ChanceRecipeOutput(gens(p.output), chance, 0f), p.inputs);
+        // ChanceRecipeOutput(generators, xp, chance) — despite the parameter order, the SECOND float
+        // is xp and the THIRD is the drop chance (verified by bytecode). Passing chance last is required.
+        return record(p.id, new ChanceRecipeOutput(gens(p.output), 0f, chance), p.inputs);
     }
 
     /** {@code addRange(output, min, max, ...inputs)} — random output count in [min,max]. */

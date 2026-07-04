@@ -3,8 +3,12 @@ package com.sazdan.kubejsic2classic.recipe;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import com.sazdan.kubejsic2classic.KubeJSIC2Classic;
 
 import dev.latvian.mods.kubejs.util.ListJS;
 import dev.latvian.mods.kubejs.util.MapJS;
@@ -13,6 +17,7 @@ import ic2.api.recipes.registries.IAdvancedCraftingManager;
 import ic2.api.recipes.registries.IAdvancedCraftingManager.SmeltingType;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.fml.ModList;
 
 /**
  * {@code event.crafting} — count-aware IC2 workbench crafts and cooking/stonecutter/smithing,
@@ -45,8 +50,28 @@ public class CraftingWrapper extends RecordingWrapper<IAdvancedCraftingManager> 
     /** Per-apply counter so several recipes with the same output get distinct auto-ids. */
     private final Map<String, Integer> idCounter = new HashMap<>();
 
+    /** Namespaces already warned about, so the log isn't spammed on every reload. */
+    private static final Set<String> warnedNamespaces = new HashSet<>();
+
     public CraftingWrapper() {
         super("crafting");
+    }
+
+    /**
+     * IC2 exposes these crafts to the vanilla {@code RecipeManager} through a virtual resource pack
+     * that only serves namespaces equal to a <em>loaded mod id</em> (plus {@code minecraft}). A
+     * recipe id in any other namespace is silently dropped and never appears in the crafting table or
+     * JEI. Warn (once per namespace) so a made-up namespace like {@code 'ic2test:'} doesn't fail
+     * silently. Returns {@code rl} unchanged.
+     */
+    private static ResourceLocation served(ResourceLocation rl) {
+        String ns = rl.getNamespace();
+        if (!ns.equals("minecraft") && !ModList.get().isLoaded(ns) && warnedNamespaces.add(ns)) {
+            KubeJSIC2Classic.LOGGER.warn("[{}] crafting recipe id '{}' uses namespace '{}', which is not a "
+                    + "loaded mod — IC2 will NOT add it to the crafting table/JEI. Use 'kubejs:' or your "
+                    + "own mod id.", KubeJSIC2Classic.MOD_ID, rl, ns);
+        }
+        return rl;
     }
 
     // ---------------------------------------------------------------- shaped
@@ -70,7 +95,7 @@ public class CraftingWrapper extends RecordingWrapper<IAdvancedCraftingManager> 
         Map<?, ?> keys = toKeyMap(args[idx]);
         Object[] shapeArgs = buildShapedArgs(rows, keys);
 
-        ResourceLocation rl = id != null ? id : autoId("shaped", output);
+        ResourceLocation rl = served(id != null ? id : autoId("shaped", output));
         addOp(mgr -> {
             mgr.removeCraftingRecipe(rl);
             mgr.addShapedRecipe(rl, output, shapeArgs);
@@ -110,7 +135,7 @@ public class CraftingWrapper extends RecordingWrapper<IAdvancedCraftingManager> 
         ItemStack output = IC2Conversions.toItemStack(args[idx++]);
         IInput[] inputs = IC2Conversions.toInputs(flatten(Arrays.copyOfRange(args, idx, args.length)));
 
-        ResourceLocation rl = id != null ? id : autoId("shapeless", output);
+        ResourceLocation rl = served(id != null ? id : autoId("shapeless", output));
         addOp(mgr -> {
             mgr.removeCraftingRecipe(rl);
             mgr.addShapelessRecipe(rl, output, (Object[]) inputs);
@@ -155,7 +180,7 @@ public class CraftingWrapper extends RecordingWrapper<IAdvancedCraftingManager> 
         float xp = numbers.isEmpty() ? 0f : numbers.get(0);
         Float time = numbers.size() >= 2 ? numbers.get(1) : null;
 
-        ResourceLocation rl = id != null ? id : autoId("smelting", output);
+        ResourceLocation rl = served(id != null ? id : autoId("smelting", output));
         addOp(mgr -> {
             mgr.removeSmeltingRecipe(rl, typeArr);
             if (time != null) {
@@ -185,7 +210,7 @@ public class CraftingWrapper extends RecordingWrapper<IAdvancedCraftingManager> 
         ItemStack output = IC2Conversions.toItemStack(args[idx++]);
         Object input = IC2Conversions.toVanillaInput(args[idx]);
 
-        ResourceLocation rl = id != null ? id : autoId("stonecutter", output);
+        ResourceLocation rl = served(id != null ? id : autoId("stonecutter", output));
         addOp(mgr -> {
             mgr.removeStoneCutterRecipe(rl);
             mgr.addStoneCutterRecipe(rl, output, input);
@@ -210,7 +235,7 @@ public class CraftingWrapper extends RecordingWrapper<IAdvancedCraftingManager> 
         Object base = IC2Conversions.toVanillaInput(args[idx++]);
         Object addition = IC2Conversions.toVanillaInput(args[idx]);
 
-        ResourceLocation rl = id != null ? id : autoId("smithing", output);
+        ResourceLocation rl = served(id != null ? id : autoId("smithing", output));
         addOp(mgr -> {
             mgr.removeSmithingRecipe(rl);
             mgr.addSmithingRecipe(rl, base, addition, output);

@@ -37,11 +37,10 @@ public class IC2RecipesEventJS extends EventJS {
     public final MachineRecipeWrapper compressor = reg("compressor");
     public final MachineRecipeWrapper sawmill = reg("sawmill");
     public final MachineRecipeWrapper massFabricator = reg("massFabricator");
-    public final MachineRecipeWrapper furnace = reg("furnace");
-    public final MachineRecipeWrapper blastFurnace = reg("blastFurnace");
-    public final MachineRecipeWrapper smoker = reg("smoker");
     public final MachineRecipeWrapper mixingFurnace = reg("mixingFurnace");
     public final MachineRecipeWrapper recycler = reg("recycler");
+    // No furnace/blastFurnace/smoker: those IC2 machines mirror vanilla cooking recipes (read-only).
+    // Use event.crafting.smelting(out, in, 'furnace' | 'blast_furnace' | 'smoker') instead.
 
     // Registries with bespoke APIs.
     public final ElectrolyzerWrapper electrolyzer = new ElectrolyzerWrapper();

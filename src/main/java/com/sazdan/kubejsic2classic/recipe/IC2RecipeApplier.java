@@ -12,7 +12,6 @@ import com.sazdan.kubejsic2classic.event.IC2RecipesEventJS;
 import dev.latvian.mods.kubejs.script.ScriptType;
 import ic2.api.recipes.RecipeRegistry;
 import ic2.api.recipes.registries.IListenableRegistry;
-import ic2.api.recipes.registries.IMachineRecipeList;
 import ic2.api.recipes.registries.IRefiningRecipeList;
 import ic2.api.util.SidedObject;
 import ic2.core.IC2;
@@ -85,6 +84,12 @@ public final class IC2RecipeApplier {
         registerListenerDedup(RecipeRegistry.CRAFTING, seen,
                 list -> apply("crafting", list, ev -> ev.crafting));
 
+        // Note: IC2's electric furnace / blast furnace / smoker are NOT scriptable here. They are
+        // CookingMachineRecipeList instances whose reload() rebuilds the list from the vanilla
+        // RecipeManager (smelting/blasting/smoking) and never fires our listeners — they are read-only
+        // mirrors of vanilla cooking recipes. To add to them, add a vanilla cooking recipe, e.g.
+        // event.crafting.smelting(out, in, 'furnace' | 'blast_furnace' | 'smoker').
+
         // Refining has an API interface but no RecipeRegistry field — reach it via IC2 internals.
         registerRefining(seen);
 
@@ -136,7 +141,13 @@ public final class IC2RecipeApplier {
             return;
         }
         wrapper.applyTo(list);
-        KubeJSIC2Classic.LOGGER.info("[{}] {}: applied +{}/-{} op(s)",
-                KubeJSIC2Classic.MOD_ID, name, wrapper.addCount(), wrapper.removeCount());
+        if (wrapper.failureCount() > 0) {
+            KubeJSIC2Classic.LOGGER.warn("[{}] {}: applied +{}/-{} op(s), {} rejected by IC2",
+                    KubeJSIC2Classic.MOD_ID, name, wrapper.addCount(), wrapper.removeCount(),
+                    wrapper.failureCount());
+        } else {
+            KubeJSIC2Classic.LOGGER.info("[{}] {}: applied +{}/-{} op(s)",
+                    KubeJSIC2Classic.MOD_ID, name, wrapper.addCount(), wrapper.removeCount());
+        }
     }
 }

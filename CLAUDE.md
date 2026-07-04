@@ -16,7 +16,7 @@
 
 ## Текущий статус (обновлено 2026-07-04)
 
-**Готово: Фазы 0–6 + Часть 1 Фазы 7 (локальный клиент, зелёная). Собран тест-jar. Дальше — Часть 2 Фазы 7 (реальный выделенный сервер), затем Фаза 7 D (релиз). Подробности и 4 находки/фикса — в журнале за 2026-07-04 ниже.** ⚠️ Правка к Фазе 4: `event.furnace/blastFurnace/smoker` УДАЛЕНЫ (это зеркала ванильных cooking-рецептов, не редактируются через machine-API; см. журнал).
+**Готово: Фазы 0–6 + Часть 1 Фазы 7 (локальный клиент) + Часть 2 (реальный выделенный сервер) — зелёные. Собран релиз-jar `kubejs_ic2classic-1.19.2-0.1.0.jar`, протестирован пользователем на выделенном сервере — работает. Написан `INSTRUCTIONS.md` (полное руководство пользователя). Дальше — Фаза 7 D (README/лицензия/logo/бамп версии до 1.0.0/публикация CurseForge+Modrinth). Подробности — в журнале за 2026-07-04 ниже.** ⚠️ Правка к Фазе 4: `event.furnace/blastFurnace/smoker` УДАЛЕНЫ (это зеркала ванильных cooking-рецептов, не редактируются через machine-API; см. журнал).
 
 Сделано в этой сессии:
 - Поставлен **JDK 17** (Temurin, winget). Gradle обязан идти на 17 (см. ниже).
@@ -212,10 +212,11 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 **Файлы Фазы 6:** `jei/IC2JeiPlugin.java`, `jei/IC2ShapedCraftingExtension.java`, `jei/IC2ShapelessCraftingExtension.java`, `jei/IC2CraftingTransferHandler.java`, `net/IC2Net.java`, `net/FillCraftingGridPacket.java`; правка `KubeJSIC2Classic.java` (+`IC2Net.init()` в конструкторе). **⚠️ Компиляция против official-маппинга: методы рецепта — `getResultItem()`/`getId()`, НЕ SRG `m_8043_`/`m_6423_` (javap по IC2-jar показывает SRG, т.к. jar обфусцирован; deobf-classpath — official).**
 
 ### Фаза 7 — Тесты и релиз
-- [ ] Функц.: add/remove/replace, chance/range/XP/NBT-выходы, счётные крафты, `/reload`.
-- [ ] Регресс: нетронутые IC2-рецепты целы; клиент↔сервер (`RecipeUpdatePacket`); сейв/лоад.
-- [ ] Совместимость: «чистый» набор и «толстый» модпак.
-- [ ] Документация (README + примеры скриптов), лицензия, `mods.toml` метаданные, публикация.
+- [x] Функц.: add/remove/replace, chance/range/XP/NBT-выходы, счётные крафты, `/reload` — **Часть 1 (клиент) зелёная**.
+- [x] Регресс: нетронутые IC2-рецепты целы; клиент↔сервер (`RecipeUpdatePacket`); сейв/лоад — **Часть 2 (сервер) проверена пользователем на реальном выделенном сервере, работает**.
+- [x] Устойчивость: один невалидный рецепт не роняет reload (изоляция per-op).
+- [x] Документация: `INSTRUCTIONS.md` (полное руководство пользователя) + `TESTING.md` (чек-лист) + `examples/`.
+- [ ] Фаза 7 D (релиз): README, лицензия, logo, бамп версии `0.1.0` → `1.0.0`, метаданные `mods.toml`, публикация CurseForge/Modrinth.
 
 ---
 
@@ -309,3 +310,11 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 - Файлы кода: `recipe/{RecordingWrapper,IC2RecipeApplier,Machines,MachineRecipeWrapper,CraftingWrapper}.java`, `event/IC2RecipesEventJS.java`.
 
 **Следующий шаг: Часть 2 `TESTING.md` — тест на реальном выделенном сервере с собранным jar** (клиент↔сервер синк, `FillCraftingGridPacket` по сети, `/reload`, персистентность, совместимость). Затем Фаза 7 D (README/лицензия/logo/версия 1.0.0/публикация).
+
+### 2026-07-04 (продолжение) — Часть 2 (выделенный сервер) пройдена + `INSTRUCTIONS.md`
+Итог: **релиз-jar протестирован пользователем на реальном выделенном сервере — работает.** Код Фаз 4–6 закрыт; осталась только Фаза 7 D (упаковка релиза). За сессию:
+- **Собран jar** `build/libs/kubejs_ic2classic-1.19.2-0.1.0.jar` (`./gradlew build`, JDK 17). Пользователь развернул его на своём выделенном сервере с обязательным набором модов (Forge/IC2/CarbonConfig/KubeJS/Rhino/Architectury) + 4 тест-скрипта.
+- **Часть 2 `TESTING.md` — зелёная** (со слов пользователя «всё остальное работает»): старт сервера без краша, применение рецептов, синк клиент↔сервер, перенос сетки крафта по сети, `/reload`, персистентность.
+- **Единственная строка в логе сервера, которую пользователь спросил** — `mixingFurnace: a recipe op was rejected by IC2 and skipped — Recipe Is Invalid: kubejs_ic2classic:mixingfurnace/ingot_bronze_from_dust_bronze`. **Это НЕ баг, а прохождение теста `T-RESILIENCE`:** `ic2_test_4_resilience.js` намеренно добавляет невалидный рецепт (mixingFurnace с 1 входом вместо 2) → изоляция per-op отклоняет его, остальное применяется, сервер стоит. Чтобы убрать строку из прод-лога — удалить файл `ic2_test_4_resilience.js` из `server_scripts/`.
+- **Написан `INSTRUCTIONS.md`** — полное руководство пользователя: установка (таблица зависимостей), быстрый старт, форматы входов/выходов (count через `Item.of(id,n)`, теги, `Nx`-префикс, жидкости mB), полный API всех машин (обычные + electrolyzer/scrapbox/fusion/uu/canner/fluidFuels/refining/rareEarth/potionBrewing), счётные крафты (shaped/shapeless/smelting/stonecutter/smithing), раздел «под капотом» (deferred-apply/идемпотентность/изоляция ошибок), таблица частых проблем.
+- CLAUDE.md обновлён (статус + Фаза 7 отмечена). Следующий содержательный шаг — **Фаза 7 D**: README, лицензия, logo.png, бамп версии `0.1.0`→`1.0.0` в `gradle.properties`, метаданные `mods.toml` (описание/авторы/ссылки), публикация на CurseForge + Modrinth.

@@ -53,6 +53,6 @@ public class IC2JeiPlugin implements IModPlugin {
         IRecipeTransferHandler<CraftingMenu, CraftingRecipe> defaultHandler =
                 helper.createUnregisteredRecipeTransferHandler(defaultInfo);
 
-        reg.addRecipeTransferHandler(new IC2CraftingTransferHandler(defaultHandler), RecipeTypes.CRAFTING);
+        reg.addRecipeTransferHandler(new IC2CraftingTransferHandler(defaultHandler, helper), RecipeTypes.CRAFTING);
     }
 }

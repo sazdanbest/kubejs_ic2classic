@@ -311,6 +311,13 @@ IC2Crafting.shaped('ic2:advanced_machine', ['PPP','PMP','PPP'], {
 
 **Следующий шаг: Часть 2 `TESTING.md` — тест на реальном выделенном сервере с собранным jar** (клиент↔сервер синк, `FillCraftingGridPacket` по сети, `/reload`, персистентность, совместимость). Затем Фаза 7 D (README/лицензия/logo/версия 1.0.0/публикация).
 
+### 2026-07-06 — Фикс JEI: «+» больше не активен без ингредиентов
+Юзер-репорт: в верстаке кнопка «+» у IC2-крафтов нажималась даже без ингредиентов (сервер выкладывал «что есть»), тогда как JEI обычно подсвечивает недостающее. Причина: `IC2CraftingTransferHandler.transferRecipe` для `RecipeIC2Base` всегда возвращал `null` (= перенос возможен). Фикс (только клиент, `IC2CraftingTransferHandler`):
+- Добавлена клиентская count-aware проверка `checkMissingInputs`: симуляция одного переноса против копий `Inventory.items` + текущего содержимого сетки (сервер возвращает сетку в инвентарь перед заполнением); `canPull` зеркалит семантику `FillCraftingGridPacket.pullMatching` (первый заматчившийся стек фиксирует тип предмета слота).
+- При нехватке → `helper.createUserErrorForMissingSlots("jei.tooltip.error.recipe.transfer.missing", slotViews)` — JEI дизейблит «+» и подсвечивает недостающие слоты как у ванильных рецептов. Проверка идёт и на клике (`doTransfer=true`) — частичное заполнение исключено.
+- Маппинг input-индекс → slot view повторяет JEI `mezz.jei.library.gui.CraftingGridHelper` (`getCraftingIndex`/`getShapelessSize`, сверено по bytecode 11.8.1.1034; input-слоты создаются row-major 3×3). Конструктору хендлера добавлен `IRecipeTransferHandlerHelper` (правка `IC2JeiPlugin`).
+- `./gradlew build` OK, jar пересобран. Осталось: ручной ретест юзером (пустой инвентарь → «+» серый + подсветка; частичный → подсветка только недостающих; полный → перенос N/слот; ваниль не тронута).
+
 ### 2026-07-04 (продолжение) — Часть 2 (выделенный сервер) пройдена + `INSTRUCTIONS.md`
 Итог: **релиз-jar протестирован пользователем на реальном выделенном сервере — работает.** Код Фаз 4–6 закрыт; осталась только Фаза 7 D (упаковка релиза). За сессию:
 - **Собран jar** `build/libs/kubejs_ic2classic-1.19.2-0.1.0.jar` (`./gradlew build`, JDK 17). Пользователь развернул его на своём выделенном сервере с обязательным набором модов (Forge/IC2/CarbonConfig/KubeJS/Rhino/Architectury) + 4 тест-скрипта.

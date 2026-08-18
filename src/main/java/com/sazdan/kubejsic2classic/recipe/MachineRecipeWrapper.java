@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 
+import com.sazdan.kubejsic2classic.KubeJSIC2Classic;
+
 import ic2.api.recipes.ingridients.generators.IOutputGenerator;
 import ic2.api.recipes.ingridients.inputs.IInput;
 import ic2.api.recipes.ingridients.recipes.ChanceRecipeOutput;
@@ -112,6 +114,68 @@ public class MachineRecipeWrapper extends RecordingWrapper<IMachineRecipeList> {
             }
             return false;
         }));
+    }
+
+    // ----------------------------------------------------------- substitute
+
+    /**
+     * Swap one item/fluid for another across <em>every</em> recipe already in this list —
+     * IC2's own defaults included — keeping id, other inputs, chance/range/XP and NBT exactly
+     * as they were. Tag-based inputs (e.g. {@code #forge:ores/iron}) are never touched (see
+     * {@link Substitution}). One failing recipe is skipped and logged; the rest still apply.
+     */
+    public void substitute(Object from, Object to) {
+        substitute(Substitution.resolve(from, to));
+    }
+
+    /** Same as {@link #substitute(Object, Object)}, for callers that already resolved a {@link Substitution.Target}. */
+    public void substitute(Substitution.Target t) {
+        addOp(list -> {
+            for (RecipeEntry entry : new ArrayList<>(list.getAllEntries())) {
+                try {
+                    IInput[] newInputs = Substitution.remapInputs(entry.getInputs(), t);
+                    IRecipeOutput newOutput = Substitution.remapOutput(entry.getOutput(), t);
+                    if (Substitution.inputsChanged(entry.getInputs(), newInputs) || newOutput != entry.getOutput()) {
+                        list.removeRecipe(entry.getLocation());
+                        list.addRecipe(entry.getLocation(), newOutput, newInputs);
+                    }
+                } catch (RuntimeException e) {
+                    KubeJSIC2Classic.LOGGER.warn("[{}] {}: substitute skipped {} — {}",
+                            KubeJSIC2Classic.MOD_ID, name, entry.getLocation(), e.toString());
+                }
+            }
+        });
+    }
+
+    /**
+     * Set the random output range [min,max] of an existing recipe (ours or IC2's own) by id,
+     * keeping its inputs, item identity and NBT unchanged. Converts a fixed/chance output to a
+     * ranged one if it wasn't already.
+     */
+    public void setRange(Object id, int min, int max) {
+        ResourceLocation rl = IC2Conversions.parseId(id);
+        addOp(list -> {
+            RecipeEntry entry = list.getRecipe(rl);
+            if (entry == null) {
+                KubeJSIC2Classic.LOGGER.warn("[{}] {}: setRange — no such recipe {}",
+                        KubeJSIC2Classic.MOD_ID, name, rl);
+                return;
+            }
+            List<ItemStack> outs = entry.getOutput().getAllOutputs();
+            if (outs.isEmpty()) {
+                throw new IllegalArgumentException("recipe " + rl + " has no item output to range");
+            }
+            if (outs.size() > 1) {
+                // RangeRecipeOutput only supports a single generator — every output past the
+                // first would otherwise be dropped silently.
+                KubeJSIC2Classic.LOGGER.warn(
+                        "[{}] {}: setRange({}) — recipe has {} output items, only the first ({}) is kept",
+                        KubeJSIC2Classic.MOD_ID, name, rl, outs.size(), IC2Conversions.itemId(outs.get(0).getItem()));
+            }
+            IOutputGenerator gen = IC2Conversions.toGenerator(outs.get(0));
+            list.removeRecipe(rl);
+            list.addRecipe(rl, new RangeRecipeOutput(gen, entry.getOutput().getMetadata(), min, max), entry.getInputs());
+        });
     }
 
     private static void removeMatching(IMachineRecipeList list, Predicate<RecipeEntry> test) {

@@ -5,15 +5,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.sazdan.kubejsic2classic.KubeJSIC2Classic;
 import com.sazdan.kubejsic2classic.recipe.IC2Conversions;
 import com.sazdan.kubejsic2classic.recipe.RecordingWrapper;
+import com.sazdan.kubejsic2classic.recipe.Substitution;
 
 import ic2.api.recipes.ingridients.generators.IOutputGenerator;
 import ic2.api.recipes.ingridients.generators.ItemWithNBTGenerator;
 import ic2.api.recipes.ingridients.inputs.EmptyInput;
 import ic2.api.recipes.ingridients.inputs.IInput;
+import ic2.api.recipes.ingridients.recipes.IFluidRecipeOutput;
+import ic2.api.recipes.ingridients.recipes.RangeFluidOutput;
 import ic2.api.recipes.ingridients.recipes.SimpleFluidOutput;
 import ic2.api.recipes.registries.IRefiningRecipeList;
+import ic2.api.recipes.registries.IRefiningRecipeList.FluidRecipe;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fluids.FluidStack;
@@ -58,17 +63,114 @@ public class RefiningWrapper extends RecordingWrapper<IRefiningRecipeList> {
     }
 
     private void record(ResourceLocation id, FluidStack first, FluidStack second, IInput catalyst,
-                        List<IOutputGenerator> itemOut, List<FluidStack> fluidOut) {
+                        List<IOutputGenerator> itemOut, List<FluidStack> fluidOut, IFluidRecipeOutput rangeOutput) {
         if (first == null || first.isEmpty()) {
             throw new IllegalArgumentException("[refining] a recipe needs a firstFluid");
         }
-        if (fluidOut.isEmpty() && itemOut.isEmpty()) {
+        IFluidRecipeOutput output = rangeOutput != null ? rangeOutput : new SimpleFluidOutput(itemOut, fluidOut);
+        if (rangeOutput == null && fluidOut.isEmpty() && itemOut.isEmpty()) {
             throw new IllegalArgumentException("[refining] a recipe needs at least one output");
         }
         ResourceLocation rl = id != null ? id : autoId(first, fluidOut);
         addOp(list -> {
             list.removeRecipe(rl, false); // idempotent
-            list.addRecipe(rl, first, second, catalyst, new SimpleFluidOutput(itemOut, fluidOut));
+            list.addRecipe(rl, first, second, catalyst, output);
+        });
+    }
+
+    // ----------------------------------------------------------- substitute
+
+    /**
+     * Swap one item/fluid for another across every refining recipe already registered —
+     * IC2's own defaults included (main/second fluid, item catalyst, item/fluid output) —
+     * keeping id and everything else (chance/range/XP/NBT) exactly as it was. See
+     * {@link Substitution} for the exact rules (tag catalysts are never touched).
+     */
+    public void substitute(Object from, Object to) {
+        substitute(Substitution.resolve(from, to));
+    }
+
+    /** Same as {@link #substitute(Object, Object)}, for callers that already resolved a {@link Substitution.Target}. */
+    public void substitute(Substitution.Target t) {
+        addOp(list -> {
+            for (FluidRecipe fr : new ArrayList<>(list.getAllRecipes())) {
+                try {
+                    FluidStack newFirst = Substitution.remapFluid(fr.getFirstTank(), t);
+                    FluidStack newSecond = Substitution.remapFluid(fr.getSecondTank(), t);
+                    IInput newCatalyst = Substitution.remapInput(fr.getItemInput(), t);
+                    var newOutput = (IFluidRecipeOutput) Substitution.remapOutput(fr.getOutput(), t);
+                    boolean changed = newFirst != fr.getFirstTank() || newSecond != fr.getSecondTank()
+                            || newCatalyst != fr.getItemInput() || newOutput != fr.getOutput();
+                    if (changed) {
+                        list.removeRecipe(fr.getLocation(), false);
+                        list.addRecipe(fr.getLocation(), newFirst, newSecond, newCatalyst, newOutput);
+                    }
+                } catch (RuntimeException e) {
+                    KubeJSIC2Classic.LOGGER.warn("[{}] refining: substitute skipped {} — {}",
+                            KubeJSIC2Classic.MOD_ID, fr.getLocation(), e.toString());
+                }
+            }
+        });
+    }
+
+    /** Set (or add) a random item-output range [min,max] on an existing recipe, by id. */
+    public void setItemRange(Object id, int min, int max) {
+        ResourceLocation rl = IC2Conversions.parseId(id);
+        addOp(list -> {
+            FluidRecipe fr = list.getRecipe(rl);
+            if (fr == null) {
+                KubeJSIC2Classic.LOGGER.warn("[{}] refining: setItemRange — no such recipe {}", KubeJSIC2Classic.MOD_ID, rl);
+                return;
+            }
+            List<ItemStack> outs = fr.getOutput().getAllOutputs();
+            if (outs.isEmpty()) {
+                throw new IllegalArgumentException("recipe " + rl + " has no item output to range");
+            }
+            IOutputGenerator gen = new ItemWithNBTGenerator(outs.get(0), outs.get(0).getCount());
+            List<FluidStack> fluids = fr.getOutput().getAllFluidOutputs();
+            IFluidRecipeOutput out;
+            if (fluids.isEmpty()) {
+                out = new RangeFluidOutput(gen, min, max, fr.getOutput().getMetadata());
+            } else {
+                // Preserve the fluid half's TRUE bounds if it was already ranged, instead of
+                // collapsing it to a single fixed amount.
+                int[] fRange = fr.getOutput() instanceof RangeFluidOutput rfo
+                        ? Substitution.readFluidRange(rfo)
+                        : new int[] {fluids.get(0).getAmount(), fluids.get(0).getAmount()};
+                out = new RangeFluidOutput(gen, min, max, fluids.get(0), fRange[0], fRange[1], fr.getOutput().getMetadata());
+            }
+            list.removeRecipe(rl, false);
+            list.addRecipe(rl, fr.getFirstTank(), fr.getSecondTank(), fr.getItemInput(), out);
+        });
+    }
+
+    /** Set (or add) a random fluid-output range [min,max] on an existing recipe, by id. */
+    public void setFluidRange(Object id, int min, int max) {
+        ResourceLocation rl = IC2Conversions.parseId(id);
+        addOp(list -> {
+            FluidRecipe fr = list.getRecipe(rl);
+            if (fr == null) {
+                KubeJSIC2Classic.LOGGER.warn("[{}] refining: setFluidRange — no such recipe {}", KubeJSIC2Classic.MOD_ID, rl);
+                return;
+            }
+            List<FluidStack> fluids = fr.getOutput().getAllFluidOutputs();
+            if (fluids.isEmpty()) {
+                throw new IllegalArgumentException("recipe " + rl + " has no fluid output to range");
+            }
+            List<ItemStack> outs = fr.getOutput().getAllOutputs();
+            IFluidRecipeOutput out;
+            if (outs.isEmpty()) {
+                out = new RangeFluidOutput(fluids.get(0), min, max, fr.getOutput().getMetadata());
+            } else {
+                // Preserve the item half's TRUE bounds if it was already ranged, instead of
+                // collapsing it to a single fixed count.
+                int[] iRange = fr.getOutput() instanceof RangeFluidOutput rfo
+                        ? Substitution.readItemRange(rfo)
+                        : new int[] {outs.get(0).getCount(), outs.get(0).getCount()};
+                out = new RangeFluidOutput(new ItemWithNBTGenerator(outs.get(0), outs.get(0).getCount()), iRange[0], iRange[1], fluids.get(0), min, max, fr.getOutput().getMetadata());
+            }
+            list.removeRecipe(rl, false);
+            list.addRecipe(rl, fr.getFirstTank(), fr.getSecondTank(), fr.getItemInput(), out);
         });
     }
 
@@ -89,6 +191,7 @@ public class RefiningWrapper extends RecordingWrapper<IRefiningRecipeList> {
         private IInput catalyst = EmptyInput.INSTANCE;
         private final List<IOutputGenerator> itemOut = new ArrayList<>();
         private final List<FluidStack> fluidOut = new ArrayList<>();
+        private IFluidRecipeOutput rangeOutput;
 
         private Builder(RefiningWrapper owner, ResourceLocation id) {
             this.owner = owner;
@@ -140,9 +243,62 @@ public class RefiningWrapper extends RecordingWrapper<IRefiningRecipeList> {
             return this;
         }
 
+        /**
+         * A random item-count output in [min,max] instead of a fixed one. Mutually exclusive
+         * with {@link #itemOutput(Object)}; combine with {@link #fluidOutputRange} for a recipe
+         * that randomizes both, or with {@link #fluidOutput} for a random item + fixed fluid.
+         */
+        public Builder itemOutputRange(Object item, int min, int max) {
+            ItemStack stack = IC2Conversions.toItemStack(item);
+            IOutputGenerator gen = new ItemWithNBTGenerator(stack, stack.getCount());
+            this.rangeOutput = combineRange(gen, min, max, null, 0, 0);
+            return this;
+        }
+
+        /**
+         * A random fluid-amount output in [min,max] instead of a fixed one. Mutually exclusive
+         * with {@link #fluidOutput(Object)}.
+         */
+        public Builder fluidOutputRange(Object fluid, int min, int max) {
+            FluidStack stack = IC2Conversions.toFluidStack(fluid);
+            this.rangeOutput = combineRange(null, 0, 0, stack, min, max);
+            return this;
+        }
+
+        private IFluidRecipeOutput combineRange(IOutputGenerator itemGen, int itemMin, int itemMax,
+                                                 FluidStack fluidStack, int fluidMin, int fluidMax) {
+            // Merge with whichever half (item/fluid) was already set by the other *Range call.
+            // getAllOutputs()/getAllFluidOutputs() only give ONE representative stack, not the
+            // true min/max, so the preserved half's bounds must come from Substitution's reflection
+            // readback — otherwise it silently collapses to a single fixed value (or to [0,0]).
+            if (rangeOutput instanceof RangeFluidOutput existing) {
+                List<ItemStack> outs = existing.getAllOutputs();
+                if (itemGen == null && !outs.isEmpty()) {
+                    int[] r = Substitution.readItemRange(existing);
+                    itemGen = new ItemWithNBTGenerator(outs.get(0), outs.get(0).getCount());
+                    itemMin = r[0];
+                    itemMax = r[1];
+                }
+                List<FluidStack> fluids = existing.getAllFluidOutputs();
+                if (fluidStack == null && !fluids.isEmpty()) {
+                    int[] r = Substitution.readFluidRange(existing);
+                    fluidStack = fluids.get(0);
+                    fluidMin = r[0];
+                    fluidMax = r[1];
+                }
+            }
+            if (itemGen != null && fluidStack != null) {
+                return new RangeFluidOutput(itemGen, itemMin, itemMax, fluidStack, fluidMin, fluidMax);
+            } else if (itemGen != null) {
+                return new RangeFluidOutput(itemGen, itemMin, itemMax);
+            } else {
+                return new RangeFluidOutput(fluidStack, fluidMin, fluidMax);
+            }
+        }
+
         /** Record the recipe (deferred; applied after IC2 loads). */
         public void build() {
-            owner.record(id, first, second, catalyst, itemOut, fluidOut);
+            owner.record(id, first, second, catalyst, itemOut, fluidOut, rangeOutput);
         }
     }
 }

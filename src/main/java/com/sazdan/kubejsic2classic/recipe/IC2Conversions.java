@@ -300,6 +300,31 @@ public final class IC2Conversions {
         return id != null ? id : new ResourceLocation("minecraft", "air");
     }
 
+    /** Resolve a JS id/value to a registered {@link Item}, or {@code null} if it isn't one. */
+    public static Item resolveItem(Object o) {
+        if (o instanceof Item item) {
+            return item;
+        }
+        ResourceLocation id = tryParseId(o);
+        return id != null && ForgeRegistries.ITEMS.containsKey(id) ? ForgeRegistries.ITEMS.getValue(id) : null;
+    }
+
+    /** Resolve a JS id/value to a registered {@link Fluid}, or {@code null} if it isn't one. */
+    public static Fluid resolveFluid(Object o) {
+        if (o instanceof Fluid fluid) {
+            return fluid;
+        }
+        ResourceLocation id = tryParseId(o);
+        return id != null && ForgeRegistries.FLUIDS.containsKey(id) ? ForgeRegistries.FLUIDS.getValue(id) : null;
+    }
+
+    private static ResourceLocation tryParseId(Object o) {
+        if (!(o instanceof CharSequence cs)) {
+            return null;
+        }
+        return ResourceLocation.tryParse(cs.toString().trim());
+    }
+
     /**
      * Heuristic: is this leading argument meant to be a recipe id rather than an item/output?
      * True when it is a namespaced string ({@code has ':'}), not a tag ({@code '#...'}), and does

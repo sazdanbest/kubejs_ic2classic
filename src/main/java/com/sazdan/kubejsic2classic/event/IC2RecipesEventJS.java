@@ -6,6 +6,7 @@ import java.util.Map;
 import com.sazdan.kubejsic2classic.recipe.CraftingWrapper;
 import com.sazdan.kubejsic2classic.recipe.MachineRecipeWrapper;
 import com.sazdan.kubejsic2classic.recipe.Machines;
+import com.sazdan.kubejsic2classic.recipe.Substitution;
 import com.sazdan.kubejsic2classic.recipe.special.CannerWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.ElectrolyzerWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.FluidFuelsWrapper;
@@ -65,5 +66,26 @@ public class IC2RecipesEventJS extends EventJS {
     /** Look up the wrapper backing a given {@link Machines.Def} name. */
     public MachineRecipeWrapper machine(String name) {
         return byName.get(name);
+    }
+
+    /**
+     * One-line "swap this item/fluid for that one everywhere it's used in production" —
+     * covers the 7 plain machines (macerator/extractor/compressor/sawmill/massFabricator/
+     * mixingFurnace/recycler), the Refinery ({@code refining}: main/second fluid, catalyst,
+     * item/fluid output) and generator fuel values ({@code fluidFuels}). Every other input,
+     * output, chance, random range and NBT on each matched recipe stays exactly as it was.
+     *
+     * <p>Not covered (call these registries' own methods instead): electrolyzer, scrapbox,
+     * fusion, uuMatter, canner, rareEarth, potionBrewing, crafting — each has a bespoke recipe
+     * shape that doesn't fit this generic engine. Tag-based inputs (e.g. {@code #forge:ores/iron})
+     * are never rewritten by design (see {@code Substitution}).
+     */
+    public void substitute(Object from, Object to) {
+        Substitution.Target t = Substitution.resolve(from, to);
+        for (MachineRecipeWrapper w : byName.values()) {
+            w.substitute(t);
+        }
+        refining.substitute(t);
+        fluidFuels.substitute(t);
     }
 }

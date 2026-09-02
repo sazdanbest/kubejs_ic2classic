@@ -93,7 +93,11 @@ public final class IC2RecipeApplier {
         // Refining has an API interface but no RecipeRegistry field — reach it via IC2 internals.
         registerRefining(seen);
 
-        KubeJSIC2Classic.LOGGER.info("[{}] registered IC2 reload listeners ({} machines + 8 special + crafting + refining)",
+        // Advanced Solars addon (soft dep — jar present on the build classpath, but not
+        // required at runtime; guarded so a server without it doesn't crash).
+        registerMolecularTransformer(seen);
+
+        KubeJSIC2Classic.LOGGER.info("[{}] registered IC2 reload listeners ({} machines + 9 special + crafting + refining)",
                 KubeJSIC2Classic.MOD_ID, Machines.ALL.size());
     }
 
@@ -127,6 +131,28 @@ public final class IC2RecipeApplier {
         } catch (Throwable t) {
             KubeJSIC2Classic.LOGGER.warn("[{}] refining registry unavailable (IC2 internals changed?) — "
                     + "event.refining will be ignored", KubeJSIC2Classic.MOD_ID, t);
+        }
+    }
+
+    /**
+     * Molecular Transformer: not IC2's registry at all — {@code advanced_solars}' own static
+     * {@code AdvancedSolarsRecipes.MOLECULAR_TRANSFORMER} field. Isolated in its own method and
+     * guarded by both a mod-presence check and a broad catch: if Advanced Solars is absent, not
+     * loaded yet, or changes its internals, {@code event.molecularTransformer} silently becomes
+     * a no-op instead of crashing the whole recipe reload.
+     */
+    private static void registerMolecularTransformer(Set<Object> seen) {
+        if (!net.minecraftforge.fml.ModList.get().isLoaded("advanced_solars")) {
+            return;
+        }
+        try {
+            ic2.api.recipes.registries.IElectrolyzerRecipeList list =
+                    trinsdar.advancedsolars.util.AdvancedSolarsRecipes.MOLECULAR_TRANSFORMER;
+            registerListenerDedup(list, seen, l -> apply("molecularTransformer", l, ev -> ev.molecularTransformer));
+        } catch (Throwable t) {
+            KubeJSIC2Classic.LOGGER.warn("[{}] Advanced Solars Molecular Transformer registry unavailable "
+                    + "(addon internals changed?) — event.molecularTransformer will be ignored",
+                    KubeJSIC2Classic.MOD_ID, t);
         }
     }
 

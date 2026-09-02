@@ -11,6 +11,7 @@ import com.sazdan.kubejsic2classic.recipe.special.CannerWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.ElectrolyzerWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.FluidFuelsWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.FusionWrapper;
+import com.sazdan.kubejsic2classic.recipe.special.MolecularTransformerWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.PotionBrewWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.RareEarthWrapper;
 import com.sazdan.kubejsic2classic.recipe.special.RefiningWrapper;
@@ -53,6 +54,8 @@ public class IC2RecipesEventJS extends EventJS {
     public final RefiningWrapper refining = new RefiningWrapper();
     public final RareEarthWrapper rareEarth = new RareEarthWrapper();
     public final PotionBrewWrapper potionBrewing = new PotionBrewWrapper();
+    // Advanced Solars addon (soft dep — see IC2RecipeApplier#registerMolecularTransformer).
+    public final MolecularTransformerWrapper molecularTransformer = new MolecularTransformerWrapper();
 
     // Count-aware workbench crafts + cooking/stonecutter/smithing (RecipeRegistry.CRAFTING).
     public final CraftingWrapper crafting = new CraftingWrapper();

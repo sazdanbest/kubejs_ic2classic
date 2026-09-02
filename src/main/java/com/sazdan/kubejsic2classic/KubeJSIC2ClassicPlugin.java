@@ -5,9 +5,13 @@ import com.sazdan.kubejsic2classic.recipe.IC2Conversions;
 import com.sazdan.kubejsic2classic.recipe.IC2RecipeApplier;
 
 import dev.latvian.mods.kubejs.KubeJSPlugin;
+import dev.latvian.mods.kubejs.recipe.component.ItemComponents;
+import dev.latvian.mods.kubejs.recipe.schema.RecipeSchema;
+import dev.latvian.mods.kubejs.recipe.schema.RegisterRecipeSchemasEvent;
 import dev.latvian.mods.kubejs.script.ScriptType;
 import dev.latvian.mods.rhino.util.wrap.TypeWrappers;
 import ic2.api.recipes.ingridients.inputs.IInput;
+import net.minecraft.resources.ResourceLocation;
 
 /**
  * KubeJS plugin for IC2Classic. Registered via {@code kubejs.plugins.txt}.
@@ -30,6 +34,21 @@ public class KubeJSIC2ClassicPlugin extends KubeJSPlugin {
         // NOTE: don't register ResourceLocation here — KubeJS already provides that wrapper,
         // and re-registering it throws and aborts mod construction.
         wrappers.register(IInput.class, (cx, o) -> IC2Conversions.toInput(o));
+    }
+
+    @Override
+    public void registerRecipeSchemas(RegisterRecipeSchemasEvent event) {
+        // ic2:crafting_ic2_automated — IC2's own count-aware crafting-table recipe type
+        // (RecipeIC2Base implements CraftingRecipe). This schema is READ-ONLY tooling support:
+        // it lets KubeJS's generic recipe viewer/export (e.g. /kubejs export) show the real
+        // result/ingredients instead of a bare {type, enabled} placeholder. It does NOT become a
+        // new authoring path — the vanilla ingredient layer these recipes expose collapses IC2's
+        // per-ingredient count to 1 (see CLAUDE.md "Крафты верстака — ДВА слоя"), so scripts must
+        // keep using event.crafting (IAdvancedCraftingManager) to add/edit these recipes.
+        event.register(new ResourceLocation("ic2", "crafting_ic2_automated"), new RecipeSchema(
+                ItemComponents.OUTPUT.key("result"),
+                ItemComponents.UNWRAPPED_INPUT_ARRAY.key("ingredients")
+        ));
     }
 
     @Override

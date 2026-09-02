@@ -10,6 +10,7 @@ convenience but are **not** on the build classpath anymore.
 | File | modId | Role |
 |---|---|---|
 | `IC2Classic-1.19.2-2.1.3.3.jar` | `ic2` | **REQUIRED locally.** Resolved via the `flatDir { dir 'libs' }` repo using *module notation* `fg.deobf("ic2:IC2Classic:1.19.2-2.1.3.3")` (NOT `files(...)` — that would skip deobf). Loaded at both compile and runtime. |
+| `advancedsolars-2.1.2.jar` | `advanced_solars` | **Soft dep**, same flatDir/module pattern (`fg.deobf("trinsdar:advancedsolars:2.1.2")`, `compileOnly`+`runtimeOnly`). Lets `event.molecularTransformer` reference `AdvancedSolarsRecipes` at compile time; guarded by `ModList.isLoaded`+try/catch at runtime so a server without this addon is unaffected. |
 | `kubejs-thermal-1902.1.9-build.16.jar` | — | Reference only (plugin structure). Not on the build classpath. |
 | `kubejs-forge-*.jar`, `rhino-forge-*.jar`, `jei-*.jar` | — | Legacy local copies; **no longer used** — now pulled from Maven (see below). Safe to delete. |
 

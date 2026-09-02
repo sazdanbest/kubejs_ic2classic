@@ -102,6 +102,14 @@ dependencies {
     // --- JEI (maven) ---
     compileOnly  fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
     runtimeOnly  fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
+
+    // --- Advanced Solars (Molecular Transformer): not on any maven, local flatDir jar like
+    //     IC2Classic. SOFT dependency — compileOnly so IC2RecipeApplier can reference
+    //     AdvancedSolarsRecipes at compile time, runtimeOnly for runClient/dev parity with the
+    //     real modpack. Guarded at runtime by ModList.isLoaded + try/catch (see
+    //     IC2RecipeApplier#registerMolecularTransformer), so it's never a hard requirement. ---
+    compileOnly  fg.deobf("trinsdar:advancedsolars:2.1.2")
+    runtimeOnly  fg.deobf("trinsdar:advancedsolars:2.1.2")
 }
 
 // Reproducible manifest values pulled from gradle.properties

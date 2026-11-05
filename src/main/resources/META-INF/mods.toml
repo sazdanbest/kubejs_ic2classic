@@ -1,7 +1,7 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
-issueTrackerURL="https://github.com/sazdan/kubejs_ic2classic/issues"
+issueTrackerURL="https://github.com/sazdanbest/kubejs_ic2classic/issues"
 
 [[mods]]
 modId="${mod_id}"
